@@ -14,6 +14,16 @@ python -m pip install --upgrade pip
 python -m pip install -e ".[dev]"
 ```
 
+## Environment
+
+Copy the example file for local development:
+
+```sh
+cp .env.example .env
+```
+
+Configured frontend origins are allowed for browser requests. CORS is not authentication.
+
 ## Run Locally
 
 ```sh
