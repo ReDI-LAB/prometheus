@@ -20,6 +20,12 @@ python -m pip install -e ".[dev]"
 uvicorn prometheus_backend.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
+Local URLs:
+
+- Health endpoint: `http://127.0.0.1:8000/api/v1/health`
+- Swagger UI: `http://127.0.0.1:8000/docs`
+- OpenAPI JSON: `http://127.0.0.1:8000/openapi.json`
+
 ## Checks
 
 ```sh
