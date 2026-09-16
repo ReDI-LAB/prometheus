@@ -13,7 +13,7 @@ export default function HomePage({ onNavigate }) {
           onClick={() => onNavigate('phone')}
         />
         <ActionCard
-          label="New Member"
+          label="Neues Mitglied"
           onClick={() => onNavigate('new-member')}
         />
       </ul>
