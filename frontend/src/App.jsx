@@ -57,7 +57,7 @@ export default function App() {
             </div>
 
             <h1 className="text-xl font-semibold text-gray-800">
-              ClubHaus Muenchen Giesing
+              ClubHaus München Giesing
             </h1>
 
           </div>

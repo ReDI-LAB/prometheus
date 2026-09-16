@@ -5,11 +5,11 @@ export default function HomePage({ onNavigate }) {
     <nav aria-label="Hauptfunktionen" className="pt-8">
       <ul className="flex justify-center gap-16">
         <ActionCard
-          label="BAB Entry"
+          label="BAB-Eintrag"
           onClick={() => onNavigate('bab')}
         />
         <ActionCard
-          label="Phone Log"
+          label="Telefondoku"
           onClick={() => onNavigate('phone')}
         />
         <ActionCard
