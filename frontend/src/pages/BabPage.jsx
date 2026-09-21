@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import InputField from '../components/InputField';
-import SelectDropdown from '../components/SelectDropdown';
+import MemberSearchSelect from '../components/MemberSearchSelect';
 import TextareaField from '../components/TextareaField';
 import FormButton from '../components/FormButton';
 import ConfirmationCard from '../components/ConfirmationCard';
@@ -28,30 +28,52 @@ function calculateDuration(arrival, departure) {
 }
 
 export default function BabPage({ onBackToHome }) {
-  // --- Form Input States (initialized directly with computed default values) ---
+  // --- Form Input States ---
   const [date, setDate] = useState(getPreviousBusinessDay);
   const [isEditingDate, setIsEditingDate] = useState(false);
-  const [memberName, setMemberName] = useState('');
   const [arrival, setArrival] = useState('09:00');
   const [departure, setDeparture] = useState('14:00');
   const [note, setNote] = useState('');
 
+  // Stores the currently selected member object from MemberSearchSelect
+  const [selectedMember, setSelectedMember] = useState(null);
+
   // Derived state: Calculated on every render without triggering extra re-renders
   const totalHours = calculateDuration(arrival, departure);
 
-  // --- Automatic & Placeholder States (Database connection in progress) ---
-  const statusBadge = 'MO'; // According to the 6-week rule
-  const attendanceMonthly = '9 / 22'; // Attendance count this month
+  // Status badge derived from selected member or default placeholder
+  const statusBadge = selectedMember?.mitgliedsstatus
+    ? selectedMember.mitgliedsstatus.toUpperCase()
+    : 'MO';
+  const attendanceMonthly = '9 / 22'; // Attendance count this month (placeholder)
 
   // --- Modal & Feedback States ---
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
-  // Temporary mock data for active members dropdown
-  const activeMembers = [
-    { value: 'Jane Doe', label: 'Jane Doe' },
-    { value: 'Max Mustermann', label: 'Max Mustermann' },
-    { value: 'Erika Musterfrau', label: 'Erika Musterfrau' },
+  // Temporary mock data matching the backend SQLAlchemy 'mitglieder' table structure
+  const memberList = [
+    {
+      mitglied_id: 'a1b2c3d4-0001-4000-8000-000000000001',
+      mitgliedscode: 'M-101',
+      vorname: 'Jane',
+      nachname: 'Doe',
+      mitgliedsstatus: 'mo',
+    },
+    {
+      mitglied_id: 'a1b2c3d4-0002-4000-8000-000000000002',
+      mitgliedscode: 'M-102',
+      vorname: 'Max',
+      nachname: 'Mustermann',
+      mitgliedsstatus: 'm',
+    },
+    {
+      mitglied_id: 'a1b2c3d4-0003-4000-8000-000000000003',
+      mitgliedscode: 'M-103',
+      vorname: 'Erika',
+      nachname: 'Musterfrau',
+      mitgliedsstatus: 'mo',
+    },
   ];
 
   // Format date for German locale display (e.g., "Montag, 01.09.2026")
@@ -65,6 +87,10 @@ export default function BabPage({ onBackToHome }) {
   // Intercept submit event to display verification modal first
   function handleFormSubmit(e) {
     e.preventDefault();
+    if (!selectedMember) {
+      alert('Bitte wählen Sie ein Mitglied aus.');
+      return;
+    }
     setShowConfirmation(true);
   }
 
@@ -82,7 +108,12 @@ export default function BabPage({ onBackToHome }) {
   // Prepare key-value pairs passed to the confirmation component
   const confirmationItems = [
     { label: 'Datum', value: formatDisplayDate(date) },
-    { label: 'Name des Mitglieds', value: memberName },
+    {
+      label: 'Name des Mitglieds',
+      value: selectedMember
+        ? `${selectedMember.vorname} ${selectedMember.nachname} (${selectedMember.mitgliedscode})`
+        : 'Kein Mitglied ausgewählt',
+    },
     { label: 'Zeiten / Gesamtstunden', value: `${arrival} – ${departure} (${totalHours} Std.)` },
     { label: 'Status / Anwesenheit', value: `${statusBadge} · ${attendanceMonthly}` },
   ];
@@ -130,15 +161,13 @@ export default function BabPage({ onBackToHome }) {
       </div>
 
       <form onSubmit={handleFormSubmit} className="space-y-4">
-        {/* Row 2: Member selection dropdown */}
-        <SelectDropdown
-          id="member-select"
+        {/* Row 2: Member selection with search and member code resolution */}
+        <MemberSearchSelect
+          id="member-search"
           label="Name des Mitglieds"
+          members={memberList}
+          onSelect={(member) => setSelectedMember(member)}
           required
-          placeholder="Mitglied nach Name suchen..."
-          value={memberName}
-          onChange={(e) => setMemberName(e.target.value)}
-          options={activeMembers}
         />
 
         {/* Row 3: Arrival & Departure time inputs side-by-side */}

@@ -28,7 +28,7 @@ export default function App() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-gray-100 text-gray-900 font-sans">
+    <div className="min-h-screen bg-gray-200 text-gray-900 font-sans">
       {/* Header: Left logo/branding, Right Clubhouse title & Backend indicator */}
       <header className="bg-gray-300 border-b border-gray-400 px-8 py-8">
         <div className="max-w-5xl mx-auto flex items-center justify-center gap-32">
