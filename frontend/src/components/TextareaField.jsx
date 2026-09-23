@@ -3,7 +3,7 @@ export default function TextareaField({
   id,
   value,
   onChange,
-  placeholder = 'Optionale Notiz...',
+  placeholder = "Optionale Notiz...",
   rows = 3,
   ...props
 }) {

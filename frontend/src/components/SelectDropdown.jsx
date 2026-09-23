@@ -5,7 +5,7 @@ export default function SelectDropdown({
   onChange,
   options = [], // Format: [{ value: 'm', label: 'Male' }] oder einfache Strings
   required = false,
-  placeholder = 'Bitte wählen...',
+  placeholder = "Bitte wählen...",
   disabled = false,
   ...props
 }) {
@@ -13,7 +13,12 @@ export default function SelectDropdown({
     <div className="flex flex-col gap-1 w-full">
       {label && (
         <label htmlFor={id} className="text-sm font-medium text-gray-700">
-          {label} {required && <span className="text-red-500 font-bold" aria-hidden="true">*</span>}
+          {label}{" "}
+          {required && (
+            <span className="text-red-500 font-bold" aria-hidden="true">
+              *
+            </span>
+          )}
         </label>
       )}
       <select
@@ -32,8 +37,8 @@ export default function SelectDropdown({
           {placeholder}
         </option>
         {options.map((opt) => {
-          const val = typeof opt === 'object' ? opt.value : opt;
-          const lbl = typeof opt === 'object' ? opt.label : opt;
+          const val = typeof opt === "object" ? opt.value : opt;
+          const lbl = typeof opt === "object" ? opt.label : opt;
           return (
             <option key={val} value={val}>
               {lbl}

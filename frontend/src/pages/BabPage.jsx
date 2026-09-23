@@ -35,10 +35,10 @@ export default function BabPage({ onBackToHome }) {
   const [departure, setDeparture] = useState('14:00');
   const [note, setNote] = useState('');
 
-  // Stores the currently selected member object from MemberSearchSelect
+  // Tracks selected member from MemberSearchSelect
   const [selectedMember, setSelectedMember] = useState(null);
 
-  // Derived state: Calculated on every render without triggering extra re-renders
+  // Derived state: Live total hours calculation
   const totalHours = calculateDuration(arrival, departure);
 
   // Status badge derived from selected member or default placeholder
@@ -51,7 +51,7 @@ export default function BabPage({ onBackToHome }) {
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
-  // Temporary mock data matching the backend SQLAlchemy 'mitglieder' table structure
+  // Mock member records matching the backend SQLAlchemy table structure
   const memberList = [
     {
       mitglied_id: 'a1b2c3d4-0001-4000-8000-000000000001',
@@ -76,7 +76,7 @@ export default function BabPage({ onBackToHome }) {
     },
   ];
 
-  // Format date for German locale display (e.g., "Montag, 01.09.2026")
+  // Format date display for German locale (e.g., "Montag, 01.09.2026")
   function formatDisplayDate(dateString) {
     if (!dateString) return '';
     const d = new Date(dateString);
@@ -84,7 +84,7 @@ export default function BabPage({ onBackToHome }) {
     return d.toLocaleDateString('de-DE', options);
   }
 
-  // Intercept submit event to display verification modal first
+  // Intercept submit event to validate and open verification modal
   function handleFormSubmit(e) {
     e.preventDefault();
     if (!selectedMember) {
@@ -94,18 +94,24 @@ export default function BabPage({ onBackToHome }) {
     setShowConfirmation(true);
   }
 
-  // Execute actual submission after user confirms in the modal
+  // Execute submission feedback, reset inputs, and stay on the form
   function handleFinalSave() {
     setShowConfirmation(false);
     setSaveSuccess(true);
 
+    // Reset member-specific fields for the next entry
+    setSelectedMember(null);
+    setNote('');
+    // Notice: 'date', 'arrival' (09:00), and 'departure' (14:00) stay pre-filled
+    // so the user can immediately type the next member from the sheet!
+
+    // Hide the green success badge after 3 seconds
     setTimeout(() => {
       setSaveSuccess(false);
-      onBackToHome();
-    }, 2500);
+    }, 3000);
   }
 
-  // Prepare key-value pairs passed to the confirmation component
+  // Prepare key-value items for the confirmation card
   const confirmationItems = [
     { label: 'Datum', value: formatDisplayDate(date) },
     {
@@ -119,17 +125,31 @@ export default function BabPage({ onBackToHome }) {
   ];
 
   return (
-    <div className="max-w-md mx-auto bg-white rounded-2xl shadow-md border border-gray-200 p-8">
-      <h2 className="text-lg font-bold text-gray-900 mb-3">Tägliche BAB-Anwesenheit</h2>
+    <article
+      aria-labelledby="bab-form-heading"
+      className="max-w-md mx-auto bg-white rounded-2xl shadow-md border border-gray-200 p-8"
+    >
+      <header className="mb-4">
+        <h2 id="bab-form-heading" className="text-lg font-bold text-gray-900">
+          Tägliche BAB-Anwesenheit
+        </h2>
+        <p className="text-xs text-gray-500 mt-1">
+          Erfassung von Kommen, Gehen und automatischer Stundenberechnung
+        </p>
+      </header>
 
       {saveSuccess && (
-        <div className="mb-4 p-3 bg-green-50 border border-green-200 text-green-800 text-xs rounded-md" role="status">
+        <aside
+          role="status"
+          aria-live="polite"
+          className="mb-4 p-3 bg-green-50 border border-green-200 text-green-800 text-xs rounded-md"
+        >
           ✓ Anwesenheit erfolgreich gespeichert!
-        </div>
+        </aside>
       )}
 
-      {/* Row 1: Date display with edit pencil icon */}
-      <div className="mb-5 pb-3 border-b border-gray-100">
+      {/* Date row with semantic section and accessible edit button */}
+      <section aria-label="Datumsangabe" className="mb-5 pb-3 border-b border-gray-100">
         <div className="flex items-center gap-2">
           <span className="text-sm font-semibold text-gray-800">
             Datum: {formatDisplayDate(date)}
@@ -139,6 +159,7 @@ export default function BabPage({ onBackToHome }) {
             onClick={() => setIsEditingDate(!isEditingDate)}
             className="text-gray-500 hover:text-gray-800 cursor-pointer text-xs"
             title="Datum ändern"
+            aria-label="Datum manuell anpassen"
           >
             ✏️
           </button>
@@ -154,24 +175,28 @@ export default function BabPage({ onBackToHome }) {
                 setDate(e.target.value);
                 setIsEditingDate(false);
               }}
-              className="text-xs border border-gray-300 rounded px-2 py-1 outline-none"
+              className="text-xs border border-gray-300 rounded px-2 py-1 outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
         )}
-      </div>
+      </section>
 
+      {/* Semantic Form */}
       <form onSubmit={handleFormSubmit} className="space-y-4">
-        {/* Row 2: Member selection with search and member code resolution */}
+        {/* Row 1: Searchable Member Selection */}
         <MemberSearchSelect
           id="member-search"
           label="Name des Mitglieds"
           members={memberList}
           onSelect={(member) => setSelectedMember(member)}
+          placeholder="Name oder Code eingeben (z. B. M-101)..."
           required
         />
 
-        {/* Row 3: Arrival & Departure time inputs side-by-side */}
-        <div className="grid grid-cols-2 gap-3">
+        {/* Row 2: Arrival & Departure grouped in a fieldset */}
+        <fieldset className="grid grid-cols-2 gap-3 border-0 p-0 m-0">
+          <legend className="sr-only">Anwesenheitszeiten</legend>
+
           <InputField
             id="arrival"
             label="Ankunft"
@@ -188,15 +213,20 @@ export default function BabPage({ onBackToHome }) {
             value={departure}
             onChange={(e) => setDeparture(e.target.value)}
           />
+        </fieldset>
+
+        {/* Row 3: Semantic Output for calculated hours */}
+        <div className="text-xs font-bold text-gray-800 py-0.5 flex items-center gap-1.5">
+          <span>Gesamt:</span>
+          <output htmlFor="arrival departure" aria-live="polite">
+            {Math.round(Number(totalHours))} Std.
+          </output>
         </div>
 
-        {/* Row 4: Total hours calculation display */}
-        <div className="text-xs font-bold text-gray-800 py-0.5">
-          Gesamt: {Math.round(Number(totalHours))} Std.
-        </div>
+        {/* Row 4: Read-only auto badges grouped in a fieldset */}
+        <fieldset className="grid grid-cols-2 gap-3 border-0 p-0 m-0">
+          <legend className="sr-only">Automatische Indikatoren</legend>
 
-        {/* Row 5: Read-only auto badges */}
-        <div className="grid grid-cols-2 gap-3">
           <InputField
             id="status"
             label="Status"
@@ -209,9 +239,9 @@ export default function BabPage({ onBackToHome }) {
             value={attendanceMonthly}
             readOnly
           />
-        </div>
+        </fieldset>
 
-        {/* Row 6: Optional notes textarea */}
+        {/* Row 5: Optional notes */}
         <TextareaField
           id="note"
           label="Notiz (optional)"
@@ -221,7 +251,7 @@ export default function BabPage({ onBackToHome }) {
           onChange={(e) => setNote(e.target.value)}
         />
 
-        {/* Row 7: Action buttons */}
+        {/* Row 6: Action buttons */}
         <div className="flex justify-end gap-3 pt-3">
           <FormButton variant="secondary" onClick={onBackToHome}>
             Abbrechen
@@ -232,7 +262,7 @@ export default function BabPage({ onBackToHome }) {
         </div>
       </form>
 
-      {/* Confirmation modal */}
+      {/* Confirmation Modal */}
       <ConfirmationCard
         isOpen={showConfirmation}
         title="Angaben überprüfen"
@@ -240,6 +270,6 @@ export default function BabPage({ onBackToHome }) {
         onCancel={() => setShowConfirmation(false)}
         onConfirm={handleFinalSave}
       />
-    </div>
+    </article>
   );
 }

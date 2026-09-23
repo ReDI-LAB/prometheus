@@ -1,4 +1,4 @@
-import FormButton from './FormButton';
+import FormButton from "./FormButton";
 
 /**
  * Accessible and semantic confirmation dialog for verifying form records.
@@ -12,7 +12,7 @@ import FormButton from './FormButton';
  */
 export default function ConfirmationCard({
   isOpen,
-  title = 'Angaben überprüfen',
+  title = "Angaben überprüfen",
   items = [],
   onCancel,
   onConfirm,
@@ -23,7 +23,6 @@ export default function ConfirmationCard({
   return (
     // Fixed backdrop wrapper over full viewport
     <div className="fixed inset-0 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-      
       {/* Semantic HTML5 dialog container (m-auto centers the native dialog element) */}
       <dialog
         open
@@ -49,7 +48,7 @@ export default function ConfirmationCard({
               >
                 <dt className="text-gray-500 font-medium">{item.label}:</dt>
                 <dd className="text-gray-900 font-semibold text-right m-0">
-                  {item.value || '—'}
+                  {item.value || "—"}
                 </dd>
               </div>
             ))}
@@ -65,7 +64,6 @@ export default function ConfirmationCard({
             </FormButton>
           </footer>
         </div>
-
       </dialog>
     </div>
   );
