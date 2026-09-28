@@ -28,7 +28,7 @@ export default function SelectDropdown({
         onChange={onChange}
         required={required}
         disabled={disabled}
-        className={`w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 bg-white shadow-xs transition-colors
+        className={`h-10 w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 bg-white shadow-xs transition-colors
           focus:border-blue-500 focus:ring-2 focus:ring-blue-500 focus:outline-none
           disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed`}
         {...props}

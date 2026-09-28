@@ -1,120 +1,103 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect } from 'react';
 
 /**
  * MemberSearchSelect Component
  * Accessible combobox allowing user to search members by full name or unique member code.
  * UI strings are localized in German; all source comments are in English.
  *
- * @param {string} label - Form field label text
- * @param {string} id - HTML element id
- * @param {Array<Object>} members - Available member records matching SQLAlchemy schema
- * @param {Object|null} selectedMember - Currently active member object passed from parent
- * @param {Function} onSelect - Callback fired when a member is chosen or cleared
- * @param {boolean} required - Specifies if selection is mandatory
- * @param {string} placeholder - Input placeholder guidance text
+ * @param {Object} props - Component properties
+ * @param {string} [props.label='Mitglied'] - Form field label text
+ * @param {string} [props.id='member-search'] - HTML element id
+ * @param {Array<Object>} [props.members=[]] - Available member records matching SQLAlchemy schema
+ * @param {Object|null} [props.selectedMember=null] - Currently active member object passed from parent
+ * @param {Function} props.onSelect - Callback fired when a member is chosen or cleared
+ * @param {boolean} [props.required=false] - Specifies if selection is mandatory
+ * @param {string} [props.placeholder='Mitglied nach Namen suchen...'] - Input placeholder guidance text
  */
 export default function MemberSearchSelect({
-  label = "Mitglied suchen",
-  id = "member-search",
+  label = 'Mitglied',
+  id = 'member-search',
   members = [],
   selectedMember = null,
   onSelect,
   required = false,
-  placeholder = "Name oder Code (z. B. M-101)...",
+  placeholder = 'Mitglied nach Namen suchen...',
 }) {
-  // Local input query state (tracks active typing)
-  const [query, setQuery] = useState("");
-  // Controls dropdown list popup visibility
+  const [query, setQuery] = useState('');
   const [isOpen, setIsOpen] = useState(false);
-  // DOM reference to detect clicks outside component boundaries
   const containerRef = useRef(null);
 
-  // Close dropdown menu when clicking outside
+  // Handle click outside to close dropdown
   useEffect(() => {
     function handleClickOutside(event) {
-      if (
-        containerRef.current &&
-        !containerRef.current.contains(event.target)
-      ) {
+      if (containerRef.current && !containerRef.current.contains(event.target)) {
         setIsOpen(false);
       }
     }
-
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Compute displayed input value:
-  // Shows selected member name if selected, otherwise shows what the user typed
-  const inputValue = selectedMember
+  // Display value: Prioritizes selected member object, otherwise shows active query text
+  const displayValue = selectedMember
     ? `${selectedMember.vorname} ${selectedMember.nachname}`
     : query;
 
-  // Filter members list based on query (by first name, last name, or member code)
+  // Filter members matching query across first name, last name, and member code
   const filteredMembers = members.filter((m) => {
-    const term = (selectedMember ? "" : query).toLowerCase().trim();
+    // When a member is already chosen, show all options on focus; otherwise filter by query
+    const term = (selectedMember ? '' : query).toLowerCase().trim();
     if (!term) return true;
 
     const fullName = `${m.vorname} ${m.nachname}`.toLowerCase();
-    const code = (m.mitgliedscode || "").toLowerCase();
+    const code = (m.mitgliedscode || '').toLowerCase();
     return fullName.includes(term) || code.includes(term);
   });
 
-  // Handle member selection from results list
   function handleSelect(member) {
-    setQuery("");
+    onSelect(member);
+    setQuery('');
     setIsOpen(false);
-    if (onSelect) {
-      onSelect(member);
-    }
   }
 
-  // Handle user typing inside the search input
   function handleInputChange(e) {
-    const nextValue = e.target.value;
-    setQuery(nextValue);
+    const val = e.target.value;
+    setQuery(val);
     setIsOpen(true);
-
-    // If an existing selection was modified, reset the parent state
-    if (selectedMember && onSelect) {
+    // If user edits text while a member was active, clear previous selection
+    if (selectedMember) {
       onSelect(null);
     }
   }
 
   return (
     <div ref={containerRef} className="relative flex flex-col gap-1 w-full">
-      {/* Semantic field label */}
-      <label htmlFor={id} className="text-sm font-medium text-gray-700">
-        {label}{" "}
-        {required && (
-          <span className="text-red-500 font-bold" aria-hidden="true">
-            *
-          </span>
-        )}
+      <label htmlFor={id} className="text-sm font-semibold text-gray-800">
+        {label} {required && <span className="text-red-500 font-bold" aria-hidden="true">*</span>}
       </label>
 
-      {/* Accessible search input */}
-      <input
-        id={id}
-        type="text"
-        value={inputValue}
-        onChange={handleInputChange}
-        onFocus={() => setIsOpen(true)}
-        placeholder={placeholder}
-        required={required && !selectedMember}
-        autoComplete="off"
-        className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 bg-white shadow-xs transition-colors
-          focus:border-blue-500 focus:ring-2 focus:ring-blue-500 focus:outline-none"
-      />
+      <div className="relative">
+        <input
+          id={id}
+          type="text"
+          value={displayValue}
+          onChange={handleInputChange}
+          onFocus={() => setIsOpen(true)}
+          placeholder={placeholder}
+          required={required && !selectedMember}
+          autoComplete="off"
+          className="w-full rounded-md border border-gray-300 px-3 py-2.5 text-sm text-gray-900 bg-white shadow-xs focus:border-blue-500 focus:ring-2 focus:ring-blue-500 focus:outline-none pr-8"
+        />
+        <span className="absolute right-3 top-3 text-xs text-gray-400 pointer-events-none">
+          ▼
+        </span>
+      </div>
 
-      {/* Floating results dropdown list */}
       {isOpen && filteredMembers.length > 0 && (
         <ul
           role="listbox"
-          aria-label="Gefundene Mitglieder"
-          className="absolute top-full left-0 mt-1 w-full z-20 border border-gray-200 rounded-md shadow-lg bg-white max-h-60 overflow-y-auto"
+          aria-label="Mitgliederliste"
+          className="absolute top-full left-0 mt-1 w-full z-30 border border-gray-200 rounded-md shadow-lg bg-white max-h-60 overflow-y-auto"
         >
           {filteredMembers.map((m) => (
             <li
@@ -122,33 +105,28 @@ export default function MemberSearchSelect({
               role="option"
               aria-selected={selectedMember?.mitglied_id === m.mitglied_id}
               onClick={() => handleSelect(m)}
-              className="p-3 hover:bg-teal-50 cursor-pointer flex justify-between items-center border-b border-gray-100 last:border-b-0 transition-colors"
+              className="p-3 hover:bg-gray-100 cursor-pointer flex justify-between items-center border-b border-gray-100 last:border-b-0"
             >
               <div className="flex items-center gap-2">
-                <span className="font-semibold text-gray-900 text-sm">
+                <span className="font-medium text-gray-900 text-sm">
                   {m.vorname} {m.nachname}
                 </span>
-
-                {/* Optional member code tag to avoid ambiguities with same names */}
                 {m.mitgliedscode && (
-                  <span className="text-xs font-mono bg-gray-100 text-gray-700 px-2 py-0.5 rounded border border-gray-200">
+                  <span className="text-xs font-mono bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">
                     {m.mitgliedscode}
                   </span>
                 )}
               </div>
-
-              {/* Status indicator badge (e.g. MO or M) */}
               <span className="text-xs font-semibold px-2 py-0.5 rounded bg-blue-100 text-blue-800 uppercase">
-                {m.mitgliedsstatus || "mo"}
+                {m.mitgliedsstatus || 'MO'}
               </span>
             </li>
           ))}
         </ul>
       )}
 
-      {/* Empty search state feedback */}
-      {isOpen && query.trim() !== "" && filteredMembers.length === 0 && (
-        <div className="absolute top-full left-0 mt-1 w-full z-20 border border-gray-200 rounded-md shadow-lg bg-white p-3 text-xs text-gray-500 text-center">
+      {isOpen && !selectedMember && query.trim() !== '' && filteredMembers.length === 0 && (
+        <div className="absolute top-full left-0 mt-1 w-full z-30 border border-gray-200 rounded-md shadow-lg bg-white p-3 text-xs text-gray-500 text-center">
           Keine passenden Mitglieder gefunden
         </div>
       )}

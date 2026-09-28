@@ -6,7 +6,7 @@ import TextareaField from "../components/TextareaField";
 import FormButton from "../components/FormButton";
 import ConfirmationCard from "../components/ConfirmationCard";
 
-// Helper: Pre-fill with previous business day (Mon-Fri) synchronously
+// Helper: Synchronously calculate previous business day (Mon-Fri)
 function getPreviousBusinessDay() {
   const today = new Date();
   const day = today.getDay(); // 0 = Sunday, 1 = Monday
@@ -19,16 +19,16 @@ function getPreviousBusinessDay() {
   return lastWorkday.toISOString().split("T")[0];
 }
 
-// 5 fixed reason categories defined in Clubhaus project requirements
+// 5 standardized reason categories aligned with latest Figma mockups
 const CALL_REASONS = [
-  { value: "1", label: "1 · Anmeldung zu Schicht" },
-  { value: "2", label: "2 · Clubhausbelange" },
-  { value: "3", label: "3 · Beratungsgespräch" },
-  { value: "4", label: "4 · Krisenintervention" },
-  { value: "5", label: "5 · Entlastungsgespräch" },
+  { value: "1", label: "1. Schichtanmeldung" },
+  { value: "2", label: "2. Clubhaus-Angelegenheiten" },
+  { value: "3", label: "3. Beratungsgespräch" },
+  { value: "4", label: "4. Krisenintervention" },
+  { value: "5", label: "5. Begleitgespräch" },
 ];
 
-// Caller options according to mockups (Staff vs. Member)
+// Caller options according to UI/UX specifications (Member vs. Staff)
 const CALLER_OPTIONS = [
   { value: "member", label: "Mitglied" },
   { value: "staff", label: "Mitarbeiter" },
@@ -48,7 +48,7 @@ export default function PhoneLogPage({ onBackToHome }) {
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
-  // Temporary mock data structured to match the backend SQLAlchemy model
+  // Temporary mock member data structured to match the backend SQLAlchemy table
   const memberList = [
     {
       mitglied_id: "a1b2c3d4-0001-4000-8000-000000000001",
@@ -86,7 +86,7 @@ export default function PhoneLogPage({ onBackToHome }) {
     return d.toLocaleDateString("de-DE", options);
   }
 
-  // Intercept submit event to validate and open verification modal
+  // Intercept submit event to validate fields and open verification modal
   function handleFormSubmit(e) {
     e.preventDefault();
     if (!selectedMember) {
@@ -94,30 +94,31 @@ export default function PhoneLogPage({ onBackToHome }) {
       return;
     }
     if (!reason) {
-      alert("Bitte wählen Sie ein Anliegen aus.");
+      alert("Bitte wählen Sie den Grund des Anrufs aus.");
       return;
     }
     setShowConfirmation(true);
   }
 
-  // Execute persistence feedback and navigate back
+  // Execute persistence feedback, clear member inputs, and stay on form for batch entry
   function handleFinalSave() {
     setShowConfirmation(false);
     setSaveSuccess(true);
 
-    // Reset caller-specific fields
+    // Reset caller-specific fields while keeping the date intact for paper lists
     setSelectedMember(null);
     setDuration("");
     setReason("");
     setNote("");
-    setCaller("member"); // Reset to default
+    setCaller("member");
 
+    // Auto-dismiss confirmation banner after 3 seconds
     setTimeout(() => {
       setSaveSuccess(false);
     }, 3000);
   }
 
-  // Selected label lookup for the confirmation card
+  // Lookup selected labels for verification modal
   const selectedReasonLabel =
     CALL_REASONS.find((r) => r.value === reason)?.label || "Nicht ausgewählt";
   const selectedCallerLabel =
@@ -132,9 +133,9 @@ export default function PhoneLogPage({ onBackToHome }) {
         ? `${selectedMember.vorname} ${selectedMember.nachname} (${selectedMember.mitgliedscode})`
         : "",
     },
-    { label: "Wer telefoniert", value: selectedCallerLabel },
+    { label: "Anrufer / Anruferin", value: selectedCallerLabel },
     { label: "Dauer", value: `${duration} Minuten` },
-    { label: "Anliegen", value: selectedReasonLabel },
+    { label: "Grund des Anrufs", value: selectedReasonLabel },
   ];
 
   return (
@@ -161,14 +162,14 @@ export default function PhoneLogPage({ onBackToHome }) {
         </aside>
       )}
 
-      {/* Date row with edit toggle */}
+      {/* Date row with semantic section and accessible edit button */}
       <section
         aria-label="Datumsangabe"
-        className="mb-5 pb-3 border-b border-gray-100"
+        className="mb-2 pb-3"
       >
         <div className="flex items-center gap-2">
           <span className="text-sm font-semibold text-gray-800">
-            Datum: {formatDisplayDate(date)}
+            {formatDisplayDate(date)}
           </span>
           <button
             type="button"
@@ -181,7 +182,7 @@ export default function PhoneLogPage({ onBackToHome }) {
           </button>
         </div>
         <p className="text-[11px] text-gray-400 mt-0.5">
-          Mit dem letzten Werktag vorausgefüllt
+          Vorausgefüllt mit dem letzten Werktag
         </p>
 
         {isEditingDate && (
@@ -206,19 +207,19 @@ export default function PhoneLogPage({ onBackToHome }) {
           id="member-search"
           label="Mitglied"
           members={memberList}
-          selectedMember={selectedMember} // <-- Diese Zeile ergänzen!
+          selectedMember={selectedMember}
           onSelect={(member) => setSelectedMember(member)}
-          placeholder="Mitglied nach Name oder Code suchen..."
+          placeholder="Mitglied nach Namen suchen..."
           required
         />
 
         {/* Row 2: Caller and Duration side by side */}
-        <fieldset className="grid grid-cols-2 gap-3 border-0 p-0 m-0">
+        <fieldset className="grid grid-cols-2 gap-3 border-0 p-0 mb-4">
           <legend className="sr-only">Anrufdetails</legend>
 
           <SelectDropdown
             id="who-is-calling"
-            label="Wer telefoniert"
+            label="Anrufer / Anruferin"
             value={caller}
             onChange={(e) => setCaller(e.target.value)}
             options={CALLER_OPTIONS}
@@ -227,7 +228,7 @@ export default function PhoneLogPage({ onBackToHome }) {
 
           <InputField
             id="duration"
-            label="Dauer (Min.)"
+            label="Dauer (Minuten) "
             type="number"
             min="1"
             placeholder="z. B. 12"
@@ -240,8 +241,8 @@ export default function PhoneLogPage({ onBackToHome }) {
         {/* Row 3: Reason Dropdown (Categories 1-5) */}
         <SelectDropdown
           id="call-reason"
-          label="Anliegen"
-          placeholder="Bitte Anliegen wählen..."
+          label="Grund des Anrufs"
+          placeholder="Grund auswählen"
           value={reason}
           onChange={(e) => setReason(e.target.value)}
           options={CALL_REASONS}
@@ -251,8 +252,8 @@ export default function PhoneLogPage({ onBackToHome }) {
         {/* Row 4: Optional Notes */}
         <TextareaField
           id="note"
-          label="Notiz (optional)"
-          placeholder="Notiz eingeben falls erforderlich..."
+          label="Anmerkung"
+          placeholder="Bei Bedarf eine Anmerkung hinzufügen"
           rows={3}
           value={note}
           onChange={(e) => setNote(e.target.value)}
@@ -264,7 +265,7 @@ export default function PhoneLogPage({ onBackToHome }) {
             Abbrechen
           </FormButton>
           <FormButton type="submit" variant="dark">
-            Eintrag speichern
+            Speichern
           </FormButton>
         </div>
       </form>
@@ -272,7 +273,7 @@ export default function PhoneLogPage({ onBackToHome }) {
       {/* Verification Modal */}
       <ConfirmationCard
         isOpen={showConfirmation}
-        title="Angaben überprüfen"
+        title="Daten überprüfen"
         items={confirmationItems}
         onCancel={() => setShowConfirmation(false)}
         onConfirm={handleFinalSave}

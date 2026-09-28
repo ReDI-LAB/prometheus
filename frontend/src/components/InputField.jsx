@@ -32,7 +32,7 @@ export default function InputField({
         placeholder={placeholder}
         disabled={disabled}
         readOnly={readOnly}
-        className={`w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-xs transition-colors
+        className={`h-10 w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-xs transition-colors
           focus:border-neutral-900 focus:ring-1 focus:ring-neutral-900 focus:outline-none
           ${readOnly ? "bg-gray-50 text-gray-700 cursor-default select-all" : "bg-white"}
           disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed`}

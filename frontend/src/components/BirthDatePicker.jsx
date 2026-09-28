@@ -91,7 +91,7 @@ export default function BirthDatePicker({
             value={valDay}
             onChange={(e) => updateDate("day", e.target.value)}
             required={required}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+            className="h-10 w-full rounded-md border border-gray-300 px-3 py-2 mb-4 text-sm text-gray-900 bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500 focus:outline-none"
           >
             <option value="" disabled>
               Day
@@ -114,7 +114,7 @@ export default function BirthDatePicker({
             value={valMonth}
             onChange={(e) => updateDate("month", e.target.value)}
             required={required}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+            className=" h-10 w-full rounded-md border border-gray-300 px-3 py-2 mb-4 text-sm text-gray-900 bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500 focus:outline-none"
           >
             <option value="" disabled>
               Month
@@ -137,7 +137,7 @@ export default function BirthDatePicker({
             value={valYear}
             onChange={(e) => updateDate("year", e.target.value)}
             required={required}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+            className=" h-10 w-full rounded-md border border-gray-300 px-3 py-2 mb-4 text-sm text-gray-900 bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500 focus:outline-none"
           >
             <option value="" disabled>
               Year

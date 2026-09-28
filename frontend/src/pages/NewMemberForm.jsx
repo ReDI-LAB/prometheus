@@ -1,6 +1,5 @@
 import { useState } from "react";
 import InputField from "../components/InputField";
-import SelectDropdown from "../components/SelectDropdown";
 import BirthDatePicker from "../components/BirthDatePicker";
 import RadioGroup from "../components/RadioGroup";
 import Accordion from "../components/Accordion";
@@ -8,23 +7,32 @@ import StepProgress from "../components/StepProgress";
 import FormButton from "../components/FormButton";
 import ConfirmationCard from "../components/ConfirmationCard";
 
-// Step definition items for the multi-step navigation
+// Step definitions for the multi-step registration wizard
 const STEPS = [
-  { id: 1, label: "Personal Details" },
-  { id: 2, label: "Contact Details" },
+  { id: 1, label: "Persönliche Daten" },
+  { id: 2, label: "Kontaktdaten" },
   { id: 3, label: "ClubHaus" },
 ];
 
 const TITLE_OPTIONS = [
+  { value: "", label: "Auswählen..." },
   { value: "Herr", label: "Herr" },
   { value: "Frau", label: "Frau" },
   { value: "Divers", label: "Divers" },
 ];
 
 const GENDER_OPTIONS = [
-  { value: "m", label: "Male" },
-  { value: "w", label: "Female" },
-  { value: "d", label: "Other" },
+  { value: "m", label: "Männlich" },
+  { value: "w", label: "Weiblich" },
+  { value: "d", label: "Divers" },
+];
+
+// Predefined staff list for the orientation interview dropdown
+const STAFF_OPTIONS = [
+  { value: "", label: "Mitarbeitenden auswählen..." },
+  { value: "Mitarbeiter 1", label: "Mitarbeiter 1" },
+  { value: "Mitarbeiter 2", label: "Mitarbeiter 2" },
+  { value: "Mitarbeiter 3", label: "Mitarbeiter 3" },
 ];
 
 // Initial blank form data template aligned with SQLAlchemy model
@@ -40,15 +48,16 @@ const INITIAL_FORM_DATA = {
   strasse_hausnummer: "",
   postleitzahl: "",
   ort: "München",
+  land: "Deutschland",
   sektor: "",
-  telefon: "",
   mobile: "",
+  telefon: "",
   email: "",
 
   // Emergency Contact (Accordion)
   notfall_name: "",
   notfall_beziehung: "",
-  notfall_telefon: "",
+  notfall_mobile: "",
 
   // Step 3: ClubHaus
   eintrittsdatum: new Date().toISOString().split("T")[0],
@@ -81,11 +90,10 @@ export default function NewMemberPage({ onBackToHome }) {
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [formData, setFormData] = useState(INITIAL_FORM_DATA);
 
-  // Generic change handler for standard inputs
+  // Generic change handler updating form state and triggering PLZ sector calculation
   function handleChange(field, value) {
     setFormData((prev) => {
       const updated = { ...prev, [field]: value };
-      // Derive sector when full 5-digit zip code is entered
       if (field === "postleitzahl" && value.length === 5) {
         updated.sektor = getSectorFromPlz(value);
       }
@@ -93,11 +101,15 @@ export default function NewMemberPage({ onBackToHome }) {
     });
   }
 
-  // Multi-step validation and forward navigation
+  // Multi-step validation and forward progression
   function handleNextStep(e) {
     e.preventDefault();
     if (currentStep === 1) {
-      if (!formData.vorname || !formData.nachname || !formData.geburtsdatum) {
+      if (
+        !formData.vorname.trim() ||
+        !formData.nachname.trim() ||
+        !formData.geburtsdatum
+      ) {
         alert(
           "Bitte füllen Sie alle Pflichtfelder (*) in den persönlichen Daten aus.",
         );
@@ -119,30 +131,25 @@ export default function NewMemberPage({ onBackToHome }) {
     setCurrentStep((prev) => Math.max(prev - 1, 1));
   }
 
-  // Resets state to step 1 with empty inputs for rapid consecutive registrations
+  // Final submission: reset wizard to step 1 for continuous batch entry
   function handleFinalSave() {
     setShowConfirmation(false);
     setSaveSuccess(true);
-
-    // Reset wizard back to Step 1
     setCurrentStep(1);
-
-    // Clear all fields back to blank template
     setFormData(INITIAL_FORM_DATA);
 
-    // Automatically dismiss success banner after 4 seconds
     setTimeout(() => {
       setSaveSuccess(false);
     }, 4000);
   }
 
-  // Summary items for verification dialog
+  // Summary items for confirmation modal
   const confirmationItems = [
     {
       label: "Name",
       value: `${formData.anrede ? formData.anrede + " " : ""}${formData.vorname} ${formData.nachname}`,
     },
-    { label: "Geburtsdatum", value: formData.geburtsdatum },
+    { label: "Geburtsdatum", value: formData.geburtsdatum || "-" },
     {
       label: "Adresse",
       value: `${formData.strasse_hausnummer || "-"}, ${formData.postleitzahl} ${formData.ort}`,
@@ -150,12 +157,12 @@ export default function NewMemberPage({ onBackToHome }) {
     { label: "Sektor", value: formData.sektor || "-" },
     {
       label: "Kontakt",
-      value: formData.email || formData.mobile || formData.telefon || "-",
+      value: formData.mobile || formData.telefon || formData.email || "-",
     },
     { label: "Eintrittsdatum", value: formData.eintrittsdatum },
     {
-      label: "Status",
-      value: `${formData.mitgliedsstatus.toUpperCase()} (${formData.aktivitaetsstatus})`,
+      label: "Orientierungsgespräch",
+      value: formData.ori_mitarbeiter || "Nicht angegeben",
     },
   ];
 
@@ -176,7 +183,7 @@ export default function NewMemberPage({ onBackToHome }) {
         </p>
       </header>
 
-      {/* Accessible Step Progress Indicator */}
+      {/* Accessible step indicator */}
       <StepProgress steps={STEPS} currentStep={currentStep} />
 
       {saveSuccess && (
@@ -200,35 +207,50 @@ export default function NewMemberPage({ onBackToHome }) {
         </aside>
       )}
 
-      {/* Semantic Form Container */}
+      {/* Wizard Form */}
       <form onSubmit={handleNextStep} className="space-y-4">
-        {/* ================= STEP 1: PERSONAL DETAILS ================= */}
+        {/* ================= SCHRITT 1: PERSÖNLICHE DATEN ================= */}
         {currentStep === 1 && (
           <fieldset className="space-y-4 border-0 p-0 m-0">
             <legend className="w-full text-xs font-semibold uppercase tracking-wider text-gray-700 bg-gray-100 p-2 rounded-md mb-2">
-              Personal Details
+              Persönliche Daten
             </legend>
 
-            <SelectDropdown
-              id="title"
-              label="Title / Anrede"
-              value={formData.anrede}
-              onChange={(e) => handleChange("anrede", e.target.value)}
-              options={TITLE_OPTIONS}
-            />
+            {/* 3-Column layout: Anrede, Vorname, Nachname */}
+            <div className="grid grid-cols-3 gap-3">
+              <div className="flex flex-col gap-1">
+                <label
+                  htmlFor="title"
+                  className="text-sm font-semibold text-gray-800"
+                >
+                  Anrede
+                </label>
+                <select
+                  id="title"
+                  value={formData.anrede}
+                  onChange={(e) => handleChange("anrede", e.target.value)}
+                  className="h-10 w-full rounded-md border border-gray-300 px-2 text-sm bg-white shadow-xs focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                >
+                  {TITLE_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-            <div className="grid grid-cols-2 gap-3">
               <InputField
                 id="first-name"
-                label="First Name"
+                label="Vorname"
                 value={formData.vorname}
                 onChange={(e) => handleChange("vorname", e.target.value)}
                 placeholder="z. B. Max"
                 required
               />
+
               <InputField
                 id="last-name"
-                label="Last Name"
+                label="Nachname"
                 value={formData.nachname}
                 onChange={(e) => handleChange("nachname", e.target.value)}
                 placeholder="z. B. Mustermann"
@@ -236,16 +258,17 @@ export default function NewMemberPage({ onBackToHome }) {
               />
             </div>
 
-            {/* Accessible Birth Date Picker (Day / Month / Year Dropdowns) */}
+            {/* Birth Date Picker */}
             <BirthDatePicker
-              label="Date of birth"
+              label="Geburtsdatum"
               value={formData.geburtsdatum}
               onChange={(val) => handleChange("geburtsdatum", val)}
               required
             />
 
+            {/* German Radio Group for Gender */}
             <RadioGroup
-              label="Gender"
+              label="Geschlecht"
               name="gender"
               value={formData.geschlecht}
               onChange={(e) => handleChange("geschlecht", e.target.value)}
@@ -254,16 +277,16 @@ export default function NewMemberPage({ onBackToHome }) {
           </fieldset>
         )}
 
-        {/* ================= STEP 2: CONTACT DETAILS ================= */}
+        {/* ================= SCHRITT 2: KONTAKTDATEN ================= */}
         {currentStep === 2 && (
           <fieldset className="space-y-4 border-0 p-0 m-0">
             <legend className="w-full text-xs font-semibold uppercase tracking-wider text-gray-700 bg-gray-100 p-2 rounded-md mb-2">
-              Contact Details
+              Kontaktdaten
             </legend>
 
             <InputField
               id="street"
-              label="Street Name & Number"
+              label="Straße & Hausnummer"
               value={formData.strasse_hausnummer}
               onChange={(e) =>
                 handleChange("strasse_hausnummer", e.target.value)
@@ -274,7 +297,7 @@ export default function NewMemberPage({ onBackToHome }) {
             <div className="grid grid-cols-2 gap-3">
               <InputField
                 id="plz"
-                label="Postal Code (PLZ)"
+                label="Postleitzahl (PLZ)"
                 value={formData.postleitzahl}
                 onChange={(e) => handleChange("postleitzahl", e.target.value)}
                 placeholder="z. B. 81539"
@@ -282,7 +305,7 @@ export default function NewMemberPage({ onBackToHome }) {
               />
               <InputField
                 id="city"
-                label="City / Ort"
+                label="Stadt / Ort"
                 value={formData.ort}
                 onChange={(e) => handleChange("ort", e.target.value)}
               />
@@ -291,13 +314,13 @@ export default function NewMemberPage({ onBackToHome }) {
             <div className="grid grid-cols-2 gap-3">
               <InputField
                 id="country"
-                label="Country"
-                value="Deutschland"
-                readOnly
+                label="Land"
+                value={formData.land}
+                onChange={(e) => handleChange("land", e.target.value)}
               />
               <InputField
                 id="sector"
-                label="Sector (Auto/Editierbar)"
+                label="Sektor"
                 value={formData.sektor}
                 onChange={(e) => handleChange("sektor", e.target.value)}
                 placeholder="Automatisch aus PLZ"
@@ -305,17 +328,31 @@ export default function NewMemberPage({ onBackToHome }) {
             </div>
 
             <div className="grid grid-cols-2 gap-3">
-              <InputField
-                id="mobile"
-                label="Mobile (+49)"
-                type="tel"
-                value={formData.mobile}
-                onChange={(e) => handleChange("mobile", e.target.value)}
-                placeholder="0170 1234567"
-              />
+              <div className="flex flex-col gap-1">
+                <label
+                  htmlFor="mobile"
+                  className="text-sm font-semibold text-gray-800"
+                >
+                  Mobil
+                </label>
+                <div className="flex">
+                  <span className="inline-flex items-center px-2.5 rounded-l-md border border-r-0 border-gray-300 bg-gray-50 text-gray-600 text-xs select-none">
+                    🇩🇪 +49
+                  </span>
+                  <input
+                    id="mobile"
+                    type="tel"
+                    value={formData.mobile}
+                    onChange={(e) => handleChange("mobile", e.target.value)}
+                    placeholder="170 1234567"
+                    className="h-10 w-full rounded-r-md border border-gray-300 px-3 text-sm text-gray-900 bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
               <InputField
                 id="phone"
-                label="Phone (Festnetz)"
+                label="Telefon"
                 type="tel"
                 value={formData.telefon}
                 onChange={(e) => handleChange("telefon", e.target.value)}
@@ -325,16 +362,16 @@ export default function NewMemberPage({ onBackToHome }) {
 
             <InputField
               id="email"
-              label="Email"
+              label="E-Mail"
               type="email"
               value={formData.email}
               onChange={(e) => handleChange("email", e.target.value)}
               placeholder="name@beispiel.de"
             />
 
-            {/* Collapsible Emergency Contact Section */}
-            <Accordion title="Emergency Contact (Notfallkontakt)">
-              <div className="space-y-3">
+            {/* Collapsible Emergency Contact */}
+            <Accordion title="Notfallkontakt">
+              <div className="space-y-3 pt-2">
                 <InputField
                   id="emergency-name"
                   label="Name der Kontaktperson"
@@ -345,20 +382,20 @@ export default function NewMemberPage({ onBackToHome }) {
                 <div className="grid grid-cols-2 gap-3">
                   <InputField
                     id="emergency-relation"
-                    label="Relation / Beziehung"
+                    label="Beziehung"
                     value={formData.notfall_beziehung}
                     onChange={(e) =>
                       handleChange("notfall_beziehung", e.target.value)
                     }
-                    placeholder="Mutter, Betreuer, etc."
+                    placeholder="z. B. Mutter, Betreuer"
                   />
                   <InputField
                     id="emergency-phone"
-                    label="Mobile (+49)"
+                    label="Mobil"
                     type="tel"
-                    value={formData.notfall_telefon}
+                    value={formData.notfall_mobile}
                     onChange={(e) =>
-                      handleChange("notfall_telefon", e.target.value)
+                      handleChange("notfall_mobile", e.target.value)
                     }
                     placeholder="0151 9876543"
                   />
@@ -368,48 +405,48 @@ export default function NewMemberPage({ onBackToHome }) {
           </fieldset>
         )}
 
-        {/* ================= STEP 3: CLUBHAUS ================= */}
+        {/* ================= SCHRITT 3: CLUBHAUS ================= */}
         {currentStep === 3 && (
           <fieldset className="space-y-4 border-0 p-0 m-0">
             <legend className="w-full text-xs font-semibold uppercase tracking-wider text-gray-700 bg-gray-100 p-2 rounded-md mb-2">
-              ClubHaus Data
+              ClubHaus
             </legend>
 
             <InputField
               id="enrolment-date"
-              label="Enrolment Date / Eintrittsdatum"
+              label="Eintrittsdatum"
               type="date"
               value={formData.eintrittsdatum}
               onChange={(e) => handleChange("eintrittsdatum", e.target.value)}
               required
             />
 
-            <InputField
-              id="ori-interview"
-              label="ORI Closing Interview Conducted By"
-              value={formData.ori_mitarbeiter}
-              onChange={(e) => handleChange("ori_mitarbeiter", e.target.value)}
-              placeholder="Name des Mitarbeitenden..."
-            />
-
-            <div className="grid grid-cols-2 gap-3">
-              <InputField
-                id="membership-status"
-                label="Mitgliedsstatus"
-                value="MO (Standard)"
-                readOnly
-              />
-              <InputField
-                id="activity-status"
-                label="Aktivitätsstatus"
-                value="Aktiv (< 3 Monate)"
-                readOnly
-              />
+            <div className="flex flex-col gap-1">
+              <label
+                htmlFor="ori-interview"
+                className="text-sm font-semibold text-gray-800"
+              >
+                Orientierungsgespräch geführt von
+              </label>
+              <select
+                id="ori-interview"
+                value={formData.ori_mitarbeiter}
+                onChange={(e) =>
+                  handleChange("ori_mitarbeiter", e.target.value)
+                }
+                className="h-10 w-full rounded-md border border-gray-300 px-3 text-sm text-gray-900 bg-white shadow-xs focus:ring-2 focus:ring-blue-500 focus:outline-none"
+              >
+                {STAFF_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
             </div>
           </fieldset>
         )}
 
-        {/* Navigation Action Buttons */}
+        {/* Bottom Navigation Buttons */}
         <div className="flex justify-between items-center pt-4 border-t border-gray-100">
           {currentStep > 1 ? (
             <FormButton
@@ -417,7 +454,7 @@ export default function NewMemberPage({ onBackToHome }) {
               variant="secondary"
               onClick={handlePrevStep}
             >
-              &lt; Back
+              &lt; Zurück
             </FormButton>
           ) : (
             <FormButton
@@ -430,12 +467,12 @@ export default function NewMemberPage({ onBackToHome }) {
           )}
 
           <FormButton type="submit" variant="dark">
-            {currentStep < 3 ? "Continue >" : "Mitglied speichern"}
+            {currentStep < 3 ? "Weiter >" : "Speichern"}
           </FormButton>
         </div>
       </form>
 
-      {/* Final Confirmation Verification Modal */}
+      {/* Confirmation Modal */}
       <ConfirmationCard
         isOpen={showConfirmation}
         title="Angaben überprüfen"
