@@ -219,7 +219,7 @@ export default function PhoneLogPage({ onBackToHome }) {
 
           <SelectDropdown
             id="who-is-calling"
-            label="Anrufer / Anruferin"
+            label="Wer telefoniert"
             value={caller}
             onChange={(e) => setCaller(e.target.value)}
             options={CALLER_OPTIONS}
