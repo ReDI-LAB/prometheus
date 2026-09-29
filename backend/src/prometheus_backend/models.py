@@ -17,8 +17,12 @@ class Mitglieder(Base):
         # constraint; confirm against the actual DB constraint once migrations
         # are available.
         sa.CheckConstraint("mitgliedsstatus IN ('mo', 'm')", name="ck_mitglieder_mitgliedsstatus"),
+        # Confirmed with Natalia/data team: the frontend offers a "Divers"
+        # anrede option, so 'divers' is allowed here rather than mapped to
+        # 'keine_angabe'. data/prometheus-schema.sql has not been updated to
+        # match yet as of this commit.
         sa.CheckConstraint(
-            "anrede IN ('frau', 'herr', 'keine_angabe')", name="ck_mitglieder_anrede"
+            "anrede IN ('frau', 'herr', 'divers', 'keine_angabe')", name="ck_mitglieder_anrede"
         ),
         sa.CheckConstraint(
             "geschlecht IN ('weiblich', 'maennlich', 'divers', 'keine_angabe')",
