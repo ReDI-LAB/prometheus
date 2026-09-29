@@ -17,6 +17,13 @@ class Mitglieder(Base):
         # constraint; confirm against the actual DB constraint once migrations
         # are available.
         sa.CheckConstraint("mitgliedsstatus IN ('mo', 'm')", name="ck_mitglieder_mitgliedsstatus"),
+        sa.CheckConstraint(
+            "anrede IN ('frau', 'herr', 'keine_angabe')", name="ck_mitglieder_anrede"
+        ),
+        sa.CheckConstraint(
+            "geschlecht IN ('weiblich', 'maennlich', 'divers', 'keine_angabe')",
+            name="ck_mitglieder_geschlecht",
+        ),
     )
 
     mitglied_id: Mapped[uuid.UUID] = mapped_column(
