@@ -6,7 +6,7 @@ from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import func, select, text
-from sqlalchemy.exc import DBAPIError
+from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from prometheus_backend.database import get_session
@@ -14,6 +14,7 @@ from prometheus_backend.models import Anwesenheitseintraege, Mitglieder, Notfall
 from prometheus_backend.schemas import (
     AnwesenheitPage,
     AnwesenheitRead,
+    MitgliedCreate,
     MitgliederPage,
     MitgliedRead,
     NotfallkontaktRead,
@@ -83,6 +84,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             limit=limit,
             offset=offset,
         )
+
+    @app.post("/api/v1/members", tags=["members"], status_code=201)
+    async def create_member(payload: MitgliedCreate, session: SessionDep) -> MitgliedRead:
+        member = Mitglieder(**payload.model_dump())
+        session.add(member)
+        try:
+            await session.commit()
+        except IntegrityError as exc:
+            await session.rollback()
+            if "mitgliedscode" in str(exc.orig).lower():
+                raise HTTPException(
+                    status_code=409, detail="A member with this mitgliedscode already exists"
+                ) from None
+            raise HTTPException(status_code=409, detail="Member could not be created") from None
+        await session.refresh(member)
+        return MitgliedRead.model_validate(member)
 
     @app.get("/api/v1/members/{mitglied_id}", tags=["members"])
     async def read_member(mitglied_id: uuid.UUID, session: SessionDep) -> MitgliedRead:

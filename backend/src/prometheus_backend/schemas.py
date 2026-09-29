@@ -1,7 +1,27 @@
 import uuid
 from datetime import date, datetime, time
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
+
+
+class MitgliedCreate(BaseModel):
+    mitgliedscode: str
+    vorname: str
+    nachname: str
+    geburtsdatum: date
+    eintrittsdatum: date
+    mitgliedsstatus: Literal["mo", "m"] = "mo"
+    anrede: Literal["frau", "herr", "divers", "keine_angabe"] | None = None
+    geschlecht: Literal["weiblich", "maennlich", "divers", "keine_angabe"] | None = None
+    telefon: str | None = None
+    email: str | None = None
+    strasse_hausnummer: str | None = None
+    postleitzahl: str | None = None
+    ort: str | None = None
+    # No DB CHECK constraint exists yet for aktivitaetsstatus (default value
+    # still unconfirmed with the client), so it is accepted as plain text.
+    aktivitaetsstatus: str | None = None
 
 
 class MitgliedRead(BaseModel):
