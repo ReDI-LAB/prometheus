@@ -27,6 +27,9 @@ logger = logging.getLogger(__name__)
 
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
 
+DEFAULT_PAGE_SIZE = 50
+MAX_PAGE_SIZE = 200
+
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     app_settings = settings or Settings()
@@ -67,7 +70,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/api/v1/members", tags=["members"])
     async def list_members(
         session: SessionDep,
-        limit: Annotated[int, Query(ge=1, le=200)] = 50,
+        limit: Annotated[int, Query(ge=1, le=MAX_PAGE_SIZE)] = DEFAULT_PAGE_SIZE,
         offset: Annotated[int, Query(ge=0)] = 0,
     ) -> MitgliederPage:
         total = await session.scalar(select(func.count()).select_from(Mitglieder))
@@ -112,7 +115,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def list_member_attendance(
         mitglied_id: uuid.UUID,
         session: SessionDep,
-        limit: Annotated[int, Query(ge=1, le=200)] = 50,
+        limit: Annotated[int, Query(ge=1, le=MAX_PAGE_SIZE)] = DEFAULT_PAGE_SIZE,
         offset: Annotated[int, Query(ge=0)] = 0,
     ) -> AnwesenheitPage:
         if await session.get(Mitglieder, mitglied_id) is None:
@@ -154,7 +157,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def list_member_calls(
         mitglied_id: uuid.UUID,
         session: SessionDep,
-        limit: Annotated[int, Query(ge=1, le=200)] = 50,
+        limit: Annotated[int, Query(ge=1, le=MAX_PAGE_SIZE)] = DEFAULT_PAGE_SIZE,
         offset: Annotated[int, Query(ge=0)] = 0,
     ) -> TelefonatPage:
         if await session.get(Mitglieder, mitglied_id) is None:
