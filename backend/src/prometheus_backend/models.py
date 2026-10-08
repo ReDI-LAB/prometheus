@@ -101,10 +101,13 @@ class Clubhouse(Base):
     created_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True), server_default=sa.func.now()
     )
-    # The z_touch_clubhouses trigger overwrites this with clock_timestamp()
-    # on every UPDATE, so it is maintained by the database, not the app.
+    # Overwritten by touch_updated_at() (the z_touch_clubhouses trigger) with
+    # clock_timestamp() on every UPDATE, so it is maintained by the database,
+    # not the app.
     updated_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), server_default=sa.func.now()
+        sa.DateTime(timezone=True),
+        server_default=sa.func.now(),
+        server_onupdate=sa.FetchedValue(),
     )
 
 
@@ -125,10 +128,12 @@ class Staff(Base):
     created_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True), server_default=sa.func.now()
     )
-    # Maintained by the z_touch_staff trigger on every UPDATE, same as
-    # Clubhouse.updated_at.
+    # Overwritten by touch_updated_at() (the z_touch_staff trigger) with
+    # clock_timestamp() on every UPDATE, same as Clubhouse.updated_at.
     updated_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), server_default=sa.func.now()
+        sa.DateTime(timezone=True),
+        server_default=sa.func.now(),
+        server_onupdate=sa.FetchedValue(),
     )
 
 
