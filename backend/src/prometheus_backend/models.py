@@ -61,3 +61,13 @@ class Country(CodeLookupMixin, Base):
 
 class Language(CodeLookupMixin, Base):
     __tablename__ = "languages"
+
+
+class CallTopic(Base):
+    """The one lookup table with an integer code, so it does not use CodeLookupMixin."""
+
+    __tablename__ = "call_topics"
+
+    code: Mapped[int] = mapped_column(sa.Integer, primary_key=True)
+    label: Mapped[str] = mapped_column(sa.Text)
+    sort_order: Mapped[int] = mapped_column(sa.Integer)
