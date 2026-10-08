@@ -3,6 +3,9 @@
 # mirrored here. Lookup values themselves live in the database tables below,
 # not as Python enums or Literal types.
 
+import uuid
+from datetime import datetime
+
 import sqlalchemy as sa
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -71,3 +74,81 @@ class CallTopic(Base):
     code: Mapped[int] = mapped_column(sa.Integer, primary_key=True)
     label: Mapped[str] = mapped_column(sa.Text)
     sort_order: Mapped[int] = mapped_column(sa.Integer)
+
+
+class Clubhouse(Base):
+    __tablename__ = "clubhouses"
+
+    clubhouse_id: Mapped[uuid.UUID] = mapped_column(
+        sa.Uuid, primary_key=True, server_default=sa.text("gen_random_uuid()")
+    )
+    name: Mapped[str] = mapped_column(sa.Text, unique=True)
+    street_address: Mapped[str | None] = mapped_column(sa.Text)
+    postal_code: Mapped[str | None] = mapped_column(sa.Text)
+    city: Mapped[str | None] = mapped_column(sa.Text)
+    country: Mapped[str | None] = mapped_column(
+        sa.ForeignKey("countries.code", ondelete="RESTRICT", onupdate="NO ACTION"), index=True
+    )
+    timezone: Mapped[str] = mapped_column(sa.Text)
+    primary_language: Mapped[str | None] = mapped_column(
+        sa.ForeignKey("languages.code", ondelete="RESTRICT", onupdate="NO ACTION"), index=True
+    )
+    clubhouse_status: Mapped[str] = mapped_column(
+        sa.ForeignKey("clubhouse_statuses.code", ondelete="RESTRICT", onupdate="NO ACTION"),
+        server_default="active",
+        index=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), server_default=sa.func.now()
+    )
+    # The z_touch_clubhouses trigger overwrites this with clock_timestamp()
+    # on every UPDATE, so it is maintained by the database, not the app.
+    updated_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), server_default=sa.func.now()
+    )
+
+
+class Staff(Base):
+    __tablename__ = "staff"
+
+    staff_id: Mapped[uuid.UUID] = mapped_column(
+        sa.Uuid, primary_key=True, server_default=sa.text("gen_random_uuid()")
+    )
+    # The a_prepare_staff trigger generates this value on INSERT and rejects
+    # any attempt to change it afterwards; it is not meant to be client-set.
+    staff_code: Mapped[str] = mapped_column(sa.Text, unique=True)
+    first_name: Mapped[str] = mapped_column(sa.Text)
+    last_name: Mapped[str] = mapped_column(sa.Text)
+    role: Mapped[str] = mapped_column(sa.Text)
+    email: Mapped[str | None] = mapped_column(sa.Text, unique=True)
+    active: Mapped[bool] = mapped_column(sa.Boolean, server_default=sa.text("true"))
+    created_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), server_default=sa.func.now()
+    )
+    # Maintained by the z_touch_staff trigger on every UPDATE, same as
+    # Clubhouse.updated_at.
+    updated_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), server_default=sa.func.now()
+    )
+
+
+class StaffClubhouse(Base):
+    __tablename__ = "staff_clubhouses"
+    __table_args__ = (
+        sa.PrimaryKeyConstraint("staff_id", "clubhouse_id", name="pk_staff_clubhouses"),
+        # A partial unique index (uq_staff_primary_clubhouse) enforces at most
+        # one is_primary row per staff_id at the database level; not mirrored
+        # as a declarative constraint here.
+    )
+
+    staff_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("staff.staff_id", ondelete="CASCADE", onupdate="NO ACTION")
+    )
+    clubhouse_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("clubhouses.clubhouse_id", ondelete="CASCADE", onupdate="NO ACTION"),
+        index=True,
+    )
+    is_primary: Mapped[bool] = mapped_column(sa.Boolean, server_default=sa.text("false"))
+    assigned_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), server_default=sa.func.now()
+    )
