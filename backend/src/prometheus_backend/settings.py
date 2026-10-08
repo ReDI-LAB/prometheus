@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     allowed_frontend_origins: list[str] = Field(
         default_factory=lambda: ["http://localhost:5173", "http://127.0.0.1:5173"]
     )
+    database_url: str
 
     model_config = SettingsConfigDict(
         env_file=".env",
