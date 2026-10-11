@@ -4,7 +4,7 @@
 # not as Python enums or Literal types.
 
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, time
 
 import sqlalchemy as sa
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -232,4 +232,57 @@ class Member(Base):
         sa.DateTime(timezone=True),
         server_default=sa.func.now(),
         server_onupdate=sa.FetchedValue(),
+    )
+
+
+class Attendance(Base):
+    """Time-in/time-out log for members.
+
+    Inserting, updating, or deleting rows here fires
+    refresh_attendance_members() (the refresh_members_after_visit_*
+    statement-level triggers on this table), which issues an
+    UPDATE members SET updated_at = clock_timestamp() for each affected
+    member. That UPDATE in turn re-fires every BEFORE UPDATE trigger on
+    members, including b_refresh_member, so Member.membership_status and
+    Member.activity_status get recomputed as a side effect of writing
+    attendance, not just Member.updated_at.
+    """
+
+    __tablename__ = "attendance"
+    __table_args__ = (
+        sa.Index("ix_attendance_member_id", "member_id", sa.text("attendance_date DESC")),
+    )
+
+    attendance_id: Mapped[uuid.UUID] = mapped_column(
+        sa.Uuid, primary_key=True, server_default=sa.text("gen_random_uuid()")
+    )
+    member_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("members.member_id", ondelete="RESTRICT", onupdate="NO ACTION")
+    )
+    attendance_date: Mapped[date] = mapped_column(sa.Date)
+    time_in: Mapped[time] = mapped_column(sa.Time)
+    time_out: Mapped[time | None] = mapped_column(sa.Time)
+    created_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), server_default=sa.func.now()
+    )
+
+
+class EmergencyContact(Base):
+    __tablename__ = "emergency_contacts"
+
+    contact_id: Mapped[uuid.UUID] = mapped_column(
+        sa.Uuid, primary_key=True, server_default=sa.text("gen_random_uuid()")
+    )
+    member_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("members.member_id", ondelete="CASCADE", onupdate="NO ACTION"), index=True
+    )
+    name: Mapped[str] = mapped_column(sa.Text)
+    phone: Mapped[str] = mapped_column(sa.Text)
+    relationship_: Mapped[str | None] = mapped_column(
+        "relationship",
+        sa.ForeignKey("contact_relationships.code", ondelete="RESTRICT", onupdate="NO ACTION"),
+        index=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), server_default=sa.func.now()
     )
