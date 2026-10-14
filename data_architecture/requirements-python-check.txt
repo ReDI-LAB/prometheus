@@ -1,0 +1,2 @@
+# Direct Python -> PostgreSQL teaching check; no backend framework required.
+psycopg[binary]>=3.2,<4
