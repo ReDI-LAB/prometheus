@@ -1,23 +1,16 @@
 import logging
-from typing import Annotated
 
-from fastapi import Depends, FastAPI, Request
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from prometheus_backend.database import get_session
+from prometheus_backend.api.phone_calls import router as phone_calls_router
+from prometheus_backend.database import SessionDep
 from prometheus_backend.settings import Settings
 
 logger = logging.getLogger(__name__)
-
-SessionDep = Annotated[AsyncSession, Depends(get_session)]
-
-# Reused by the paginated list endpoints once the new schema's models land.
-DEFAULT_PAGE_SIZE = 50
-MAX_PAGE_SIZE = 200
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -28,7 +21,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         CORSMiddleware,
         allow_origins=app_settings.allowed_frontend_origins,
         allow_credentials=False,
-        allow_methods=["GET", "OPTIONS"],
+        allow_methods=["GET", "POST", "OPTIONS"],
         allow_headers=["Accept", "Content-Type"],
     )
 
@@ -55,6 +48,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def read_db_health(session: SessionDep) -> dict[str, str]:
         await session.execute(text("SELECT 1"))
         return {"status": "ok"}
+
+    app.include_router(phone_calls_router)
 
     return app
 
