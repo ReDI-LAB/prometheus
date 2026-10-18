@@ -1,8 +1,8 @@
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, time
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class PhoneCallCreate(BaseModel):
@@ -38,6 +38,37 @@ class PhoneCallRead(BaseModel):
 
 class PhoneCallPage(BaseModel):
     items: list[PhoneCallRead]
+    total: int
+    limit: int
+    offset: int
+
+
+class AttendanceCreate(BaseModel):
+    member_id: uuid.UUID
+    attendance_date: date
+    time_in: time
+    time_out: time | None = None
+
+    @model_validator(mode="after")
+    def time_out_not_before_time_in(self) -> "AttendanceCreate":
+        if self.time_out is not None and self.time_out < self.time_in:
+            raise ValueError("time_out must not be before time_in")
+        return self
+
+
+class AttendanceRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    attendance_id: uuid.UUID
+    member_id: uuid.UUID
+    attendance_date: date
+    time_in: time
+    time_out: time | None
+    created_at: datetime
+
+
+class AttendancePage(BaseModel):
+    items: list[AttendanceRead]
     total: int
     limit: int
     offset: int
