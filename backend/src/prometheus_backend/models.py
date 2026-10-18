@@ -5,7 +5,6 @@
 
 import uuid
 from datetime import date, datetime, time
-from decimal import Decimal
 
 import sqlalchemy as sa
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -135,28 +134,6 @@ class Staff(Base):
         sa.DateTime(timezone=True),
         server_default=sa.func.now(),
         server_onupdate=sa.FetchedValue(),
-    )
-
-
-class StaffClubhouse(Base):
-    __tablename__ = "staff_clubhouses"
-    __table_args__ = (
-        sa.PrimaryKeyConstraint("staff_id", "clubhouse_id", name="pk_staff_clubhouses"),
-        # A partial unique index (uq_staff_primary_clubhouse) enforces at most
-        # one is_primary row per staff_id at the database level; not mirrored
-        # as a declarative constraint here.
-    )
-
-    staff_id: Mapped[uuid.UUID] = mapped_column(
-        sa.ForeignKey("staff.staff_id", ondelete="CASCADE", onupdate="NO ACTION")
-    )
-    clubhouse_id: Mapped[uuid.UUID] = mapped_column(
-        sa.ForeignKey("clubhouses.clubhouse_id", ondelete="CASCADE", onupdate="NO ACTION"),
-        index=True,
-    )
-    is_primary: Mapped[bool] = mapped_column(sa.Boolean, server_default=sa.text("false"))
-    assigned_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), server_default=sa.func.now()
     )
 
 
@@ -340,34 +317,4 @@ class PhoneCall(Base):
         sa.Computed("CASE WHEN person_type = 'staff' THEN person_id END", persisted=True),
         sa.ForeignKey("staff.staff_id", ondelete="RESTRICT", onupdate="NO ACTION"),
         index=True,
-    )
-
-
-class CashTransaction(Base):
-    __tablename__ = "cash_transactions"
-    __table_args__ = (
-        sa.Index("ix_cash_transactions_member_id", "member_id", sa.text("transaction_date DESC")),
-    )
-
-    transaction_id: Mapped[uuid.UUID] = mapped_column(
-        sa.Uuid, primary_key=True, server_default=sa.text("gen_random_uuid()")
-    )
-    member_id: Mapped[uuid.UUID] = mapped_column(
-        sa.ForeignKey("members.member_id", ondelete="RESTRICT", onupdate="NO ACTION")
-    )
-    transaction_date: Mapped[date] = mapped_column(sa.Date)
-    transaction_type: Mapped[str] = mapped_column(
-        sa.ForeignKey("cash_transaction_types.code", ondelete="RESTRICT", onupdate="NO ACTION"),
-        index=True,
-    )
-    amount: Mapped[Decimal] = mapped_column(sa.Numeric(10, 2))
-    currency: Mapped[str] = mapped_column(
-        sa.ForeignKey("currencies.code", ondelete="RESTRICT", onupdate="NO ACTION"), index=True
-    )
-    recorded_by: Mapped[uuid.UUID] = mapped_column(
-        sa.ForeignKey("staff.staff_id", ondelete="RESTRICT", onupdate="NO ACTION"), index=True
-    )
-    note: Mapped[str | None] = mapped_column(sa.Text)
-    created_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), server_default=sa.func.now()
     )

@@ -59,24 +59,3 @@ class MemberCurrent(ViewBase):
     # The clubhouse-local calendar date the above statuses were computed
     # for, i.e. (statement_timestamp() AT TIME ZONE clubhouse.timezone)::date.
     status_as_of: Mapped[date] = mapped_column(sa.Date)
-
-
-class LookupLabel(ViewBase):
-    """Read-only mapping of the lookup_labels view (a public projection of
-    the translations table, omitting its internal generated ref_* FK
-    columns). Read-only — nothing should INSERT/UPDATE/DELETE through it.
-    """
-
-    __tablename__ = "lookup_labels"
-
-    # translations' real primary key is (table_name, code, language_code),
-    # which this view selects unchanged, so the same triple identifies one
-    # label row here. Declared as a composite primary key only for the ORM
-    # mapper's identity; the view itself enforces nothing.
-    table_name: Mapped[str] = mapped_column(sa.Text, primary_key=True)
-    # translations.code is text for every table_name, including
-    # call_topics (whose own code is integer) — the CHECK constraint on
-    # translations just requires a numeric-looking string in that case.
-    code: Mapped[str] = mapped_column(sa.Text, primary_key=True)
-    language_code: Mapped[str] = mapped_column(sa.Text, primary_key=True)
-    label: Mapped[str] = mapped_column(sa.Text)
