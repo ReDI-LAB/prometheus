@@ -33,10 +33,17 @@ class MemberCurrent(ViewBase):
     member_id: Mapped[uuid.UUID] = mapped_column(sa.Uuid, primary_key=True)
     clubhouse_id: Mapped[uuid.UUID] = mapped_column(sa.Uuid)
     member_code: Mapped[str] = mapped_column(sa.Text)
-    first_name: Mapped[str] = mapped_column(sa.Text)
-    last_name: Mapped[str] = mapped_column(sa.Text)
-    date_of_birth: Mapped[date] = mapped_column(sa.Date)
+    # Nullable because a redacted (anonymized) member has these cleared,
+    # matching Member.first_name/last_name/date_of_birth.
+    first_name: Mapped[str | None] = mapped_column(sa.Text)
+    last_name: Mapped[str | None] = mapped_column(sa.Text)
+    date_of_birth: Mapped[date | None] = mapped_column(sa.Date)
     join_date: Mapped[date] = mapped_column(sa.Date)
+    leave_date: Mapped[date | None] = mapped_column(sa.Date)
+    anonymized_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True))
+    # (leave_date IS NULL AND anonymized_at IS NULL); an IS NULL comparison
+    # is never itself NULL, so this is never NULL.
+    is_current: Mapped[bool] = mapped_column(sa.Boolean)
     # membership_status_on() is STRICT on non-null inputs (join_date and the
     # computed local date are always present), so this is never NULL.
     membership_status: Mapped[str] = mapped_column(sa.Text)
