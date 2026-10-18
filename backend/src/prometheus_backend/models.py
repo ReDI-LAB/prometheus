@@ -276,15 +276,26 @@ class Attendance(Base):
     members, including b_refresh_member, so Member.membership_status and
     Member.activity_status get recomputed as a side effect of writing
     attendance, not just Member.updated_at.
+
+    This table is PARTITION BY RANGE (attendance_date) in the database; the
+    backend never creates tables or partitions. All INSERT/UPDATE/DELETE
+    must target this parent table (never a monthly partition directly);
+    UPDATE and DELETE must address a row by both attendance_id and
+    attendance_date (the full primary key), not attendance_id alone; and an
+    INSERT for a date with no matching monthly partition fails.
     """
 
     __tablename__ = "attendance"
     __table_args__ = (
-        sa.Index("ix_attendance_member_id", "member_id", sa.text("attendance_date DESC")),
+        sa.PrimaryKeyConstraint("attendance_id", "attendance_date", name="pk_attendance"),
+        # ix_attendance_member_date is explicitly named in the SQL and does
+        # not follow the ix_<table>_<column> convention index=True would
+        # generate, so it is declared explicitly to match.
+        sa.Index("ix_attendance_member_date", "member_id", sa.text("attendance_date DESC")),
     )
 
     attendance_id: Mapped[uuid.UUID] = mapped_column(
-        sa.Uuid, primary_key=True, server_default=sa.text("gen_random_uuid()")
+        sa.Uuid, server_default=sa.text("gen_random_uuid()")
     )
     member_id: Mapped[uuid.UUID] = mapped_column(
         sa.ForeignKey("members.member_id", ondelete="RESTRICT", onupdate="NO ACTION")
@@ -299,19 +310,27 @@ class Attendance(Base):
 
 class EmergencyContact(Base):
     __tablename__ = "emergency_contacts"
+    __table_args__ = (
+        # ix_contacts_member is explicitly named in the SQL and does not
+        # follow the ix_<table>_<column> convention index=True would
+        # generate, so it is declared explicitly to match.
+        sa.Index("ix_contacts_member", "member_id"),
+    )
 
     contact_id: Mapped[uuid.UUID] = mapped_column(
         sa.Uuid, primary_key=True, server_default=sa.text("gen_random_uuid()")
     )
     member_id: Mapped[uuid.UUID] = mapped_column(
-        sa.ForeignKey("members.member_id", ondelete="CASCADE", onupdate="NO ACTION"), index=True
+        sa.ForeignKey("members.member_id", ondelete="CASCADE", onupdate="NO ACTION")
     )
     name: Mapped[str] = mapped_column(sa.Text)
     phone: Mapped[str] = mapped_column(sa.Text)
+    # No explicit index in the SQL for this FK column anymore (the old
+    # ix_emergency_contacts_relationship is gone); left to the schema's
+    # dynamic ix_fk_* maintenance pass, same as Staff.staff_status.
     relationship_: Mapped[str | None] = mapped_column(
         "relationship",
         sa.ForeignKey("contact_relationships.code", ondelete="RESTRICT", onupdate="NO ACTION"),
-        index=True,
     )
     created_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True), server_default=sa.func.now()
@@ -326,26 +345,38 @@ class PhoneCall(Base):
     or 'staff'. member_reference_id/staff_reference_id below are database-
     computed copies of person_id used only to give that polymorphic
     reference a real, checkable foreign key in each direction.
+
+    This table is PARTITION BY RANGE (call_date) in the database; the
+    backend never creates tables or partitions. All INSERT/UPDATE/DELETE
+    must target this parent table (never a monthly partition directly);
+    UPDATE and DELETE must address a row by both call_id and call_date (the
+    full primary key), not call_id alone; and an INSERT for a date with no
+    matching monthly partition fails.
     """
 
     __tablename__ = "phone_calls"
     __table_args__ = (
-        sa.Index(
-            "ix_phone_calls_person_type", "person_type", "person_id", sa.text("call_date DESC")
-        ),
+        sa.PrimaryKeyConstraint("call_id", "call_date", name="pk_phone_calls"),
+        # ix_calls_member/ix_calls_staff are explicitly named in the SQL and
+        # do not follow the ix_<table>_<column> convention index=True would
+        # generate (they are also composite with call_date, replacing the
+        # old single-column indexes), so they are declared explicitly.
+        sa.Index("ix_calls_member", "member_reference_id", "call_date"),
+        sa.Index("ix_calls_staff", "staff_reference_id", "call_date"),
     )
 
-    call_id: Mapped[uuid.UUID] = mapped_column(
-        sa.Uuid, primary_key=True, server_default=sa.text("gen_random_uuid()")
-    )
+    call_id: Mapped[uuid.UUID] = mapped_column(sa.Uuid, server_default=sa.text("gen_random_uuid()"))
     person_id: Mapped[uuid.UUID] = mapped_column(sa.Uuid)
     person_type: Mapped[str] = mapped_column(
         sa.ForeignKey("caller_types.code", ondelete="RESTRICT", onupdate="NO ACTION")
     )
     call_date: Mapped[date] = mapped_column(sa.Date)
     duration_minutes: Mapped[int] = mapped_column(sa.Integer)
+    # No explicit index in the SQL for this FK column anymore (the old
+    # ix_phone_calls_topic_code is gone); left to the schema's dynamic
+    # ix_fk_* maintenance pass, same as Staff.staff_status.
     topic_code: Mapped[int] = mapped_column(
-        sa.ForeignKey("call_topics.code", ondelete="RESTRICT", onupdate="NO ACTION"), index=True
+        sa.ForeignKey("call_topics.code", ondelete="RESTRICT", onupdate="NO ACTION")
     )
     note: Mapped[str | None] = mapped_column(sa.Text)
     created_at: Mapped[datetime] = mapped_column(
@@ -354,19 +385,18 @@ class PhoneCall(Base):
     # Generated by the database (GENERATED ALWAYS AS ... STORED); equals
     # person_id when person_type = 'member', otherwise NULL. The app must
     # never set this directly — Postgres rejects an explicit value for a
-    # generated column.
+    # generated column. Indexed via ix_calls_member above, not index=True.
     member_reference_id: Mapped[uuid.UUID | None] = mapped_column(
         sa.Uuid,
         sa.Computed("CASE WHEN person_type = 'member' THEN person_id END", persisted=True),
         sa.ForeignKey("members.member_id", ondelete="RESTRICT", onupdate="NO ACTION"),
-        index=True,
     )
     # Generated by the database (GENERATED ALWAYS AS ... STORED); equals
     # person_id when person_type = 'staff', otherwise NULL. Same
-    # app-must-never-set-this rule as member_reference_id.
+    # app-must-never-set-this rule as member_reference_id. Indexed via
+    # ix_calls_staff above, not index=True.
     staff_reference_id: Mapped[uuid.UUID | None] = mapped_column(
         sa.Uuid,
         sa.Computed("CASE WHEN person_type = 'staff' THEN person_id END", persisted=True),
         sa.ForeignKey("staff.staff_id", ondelete="RESTRICT", onupdate="NO ACTION"),
-        index=True,
     )
