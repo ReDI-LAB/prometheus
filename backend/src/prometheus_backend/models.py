@@ -66,6 +66,10 @@ class Language(CodeLookupMixin, Base):
     __tablename__ = "languages"
 
 
+class StaffStatus(CodeLookupMixin, Base):
+    __tablename__ = "staff_statuses"
+
+
 class CallTopic(Base):
     """The one lookup table with an integer code, so it does not use CodeLookupMixin."""
 
@@ -113,18 +117,48 @@ class Clubhouse(Base):
 
 class Staff(Base):
     __tablename__ = "staff"
+    __table_args__ = (
+        # ix_staff_clubhouse is explicitly named in the SQL and does not
+        # follow the ix_<table>_<column> convention index=True would
+        # generate, so it is declared explicitly to match.
+        sa.Index("ix_staff_clubhouse", "clubhouse_id"),
+    )
+    # staff_code is trigger-generated; eager_defaults makes SQLAlchemy fetch
+    # it back via RETURNING right after INSERT instead of requiring a
+    # manual refresh() call, the same as Member.
+    __mapper_args__ = {"eager_defaults": True}
 
     staff_id: Mapped[uuid.UUID] = mapped_column(
         sa.Uuid, primary_key=True, server_default=sa.text("gen_random_uuid()")
     )
-    # The a_prepare_staff trigger generates this value on INSERT and rejects
-    # any attempt to change it afterwards; it is not meant to be client-set.
-    staff_code: Mapped[str] = mapped_column(sa.Text, unique=True)
-    first_name: Mapped[str] = mapped_column(sa.Text)
-    last_name: Mapped[str] = mapped_column(sa.Text)
+    # Generated once by prepare_person() (the a_prepare_staff trigger),
+    # which rejects an explicit value on INSERT and blocks changing it on
+    # UPDATE outside the privileged redaction procedure.
+    staff_code: Mapped[str] = mapped_column(sa.Text, unique=True, server_default=sa.FetchedValue())
+    # Nullable because a redacted (anonymized) staff member has these
+    # cleared; a CHECK constraint (not mirrored) requires both be NULL
+    # together with anonymized_at, or both be non-blank without it.
+    first_name: Mapped[str | None] = mapped_column(sa.Text)
+    last_name: Mapped[str | None] = mapped_column(sa.Text)
     role: Mapped[str] = mapped_column(sa.Text)
     email: Mapped[str | None] = mapped_column(sa.Text, unique=True)
-    active: Mapped[bool] = mapped_column(sa.Boolean, server_default=sa.text("true"))
+    clubhouse_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("clubhouses.clubhouse_id", ondelete="RESTRICT", onupdate="NO ACTION")
+    )
+    # No explicit index in the SQL for this FK column; the schema's
+    # trailing maintenance block dynamically creates an ix_fk_staff_
+    # staff_status index for any single-column FK left without one, so
+    # it is intentionally not declared here.
+    staff_status: Mapped[str] = mapped_column(
+        sa.ForeignKey("staff_statuses.code", ondelete="RESTRICT", onupdate="NO ACTION"),
+        server_default="active",
+    )
+    start_date: Mapped[date | None] = mapped_column(sa.Date)
+    end_date: Mapped[date | None] = mapped_column(sa.Date)
+    # Set only by the privileged redaction procedure. prepare_person()
+    # (the a_prepare_staff trigger) rejects a non-NULL value on INSERT and
+    # blocks changing it on UPDATE outside that procedure.
+    anonymized_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True), server_default=sa.func.now()
     )
