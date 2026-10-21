@@ -45,6 +45,9 @@ async function extractErrorMessage(response) {
 /**
  * Helper to handle HTTP errors, parsing FastAPI JSON responses {"detail": "..."}
  */
+/**
+ * Helper to handle HTTP errors, parsing FastAPI JSON responses {"detail": "..."}
+ */
 async function handleResponse(response) {
   if (response.ok) {
     return response.json();
@@ -57,19 +60,25 @@ async function handleResponse(response) {
       throw new ApiError(
         `Ungültige Eingabedaten (422): ${errorDetail}`,
         422,
-        errorDetail,
+        errorDetail
+      );
+    case 500:
+      throw new ApiError(
+        `Server- / Datenbankfehler (500): ${errorDetail || 'Interner Serverfehler'}`,
+        500,
+        errorDetail
       );
     case 503:
       throw new ApiError(
-        "Datenbank ist derzeit nicht erreichbar (503). Bitte später erneut versuchen.",
+        'Datenbank ist derzeit nicht erreichbar (503). Bitte später erneut versuchen.',
         503,
-        errorDetail,
+        errorDetail
       );
     default:
       throw new ApiError(
         `Serverfehler (${response.status}): ${errorDetail}`,
         response.status,
-        errorDetail,
+        errorDetail
       );
   }
 }

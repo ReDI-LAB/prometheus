@@ -5,6 +5,7 @@ import SelectDropdown from "../components/SelectDropdown";
 import TextareaField from "../components/TextareaField";
 import FormButton from "../components/FormButton";
 import ConfirmationCard from "../components/ConfirmationCard";
+import { createPhoneCall } from "../services/api";
 
 // Helper: Synchronously calculate previous business day (Mon-Fri)
 function getPreviousBusinessDay() {
@@ -21,11 +22,11 @@ function getPreviousBusinessDay() {
 
 // 5 standardized reason categories aligned with latest Figma mockups
 const CALL_REASONS = [
-  { value: "1", label: "1. Schichtanmeldung" },
-  { value: "2", label: "2. Clubhaus-Angelegenheiten" },
-  { value: "3", label: "3. Beratungsgespräch" },
-  { value: "4", label: "4. Krisenintervention" },
-  { value: "5", label: "5. Begleitgespräch" },
+  { value: "1", label: "1 · Schichtanmeldung" },
+  { value: "2", label: "2 · Clubhaus-Angelegenheiten" },
+  { value: "3", label: "3 · Beratungsgespräch" },
+  { value: "4", label: "4 · Krisenintervention" },
+  { value: "5", label: "5 · Begleitgespräch" },
 ];
 
 // Caller options according to UI/UX specifications (Member vs. Staff)
@@ -47,6 +48,8 @@ export default function PhoneLogPage({ onBackToHome }) {
   // --- Modal & Feedback States ---
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Temporary mock member data structured to match the backend SQLAlchemy table
   const memberList = [
@@ -100,22 +103,38 @@ export default function PhoneLogPage({ onBackToHome }) {
     setShowConfirmation(true);
   }
 
-  // Execute persistence feedback, clear member inputs, and stay on form for batch entry
-  function handleFinalSave() {
+  // Execute submission to backend, clear member inputs, and stay on form for batch entry
+  async function handleFinalSave() {
     setShowConfirmation(false);
-    setSaveSuccess(true);
+    setErrorMessage("");
+    setIsSubmitting(true);
 
-    // Reset caller-specific fields while keeping the date intact for paper lists
-    setSelectedMember(null);
-    setDuration("");
-    setReason("");
-    setNote("");
-    setCaller("member");
+    try {
+      await createPhoneCall({
+        person_id: selectedMember.mitglied_id,
+        person_type: caller,
+        call_date: date,
+        duration_minutes: duration,
+        topic_code: reason,
+        note: note,
+      });
 
-    // Auto-dismiss confirmation banner after 3 seconds
-    setTimeout(() => {
-      setSaveSuccess(false);
-    }, 3000);
+      setSaveSuccess(true);
+      // Reset caller-specific fields while keeping the date intact for paper lists
+      setSelectedMember(null);
+      setDuration("");
+      setReason("");
+      setNote("");
+      setCaller("member");
+
+      setTimeout(() => {
+        setSaveSuccess(false);
+      }, 3000);
+    } catch (error) {
+      setErrorMessage(error.message);
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   // Lookup selected labels for verification modal
@@ -152,6 +171,7 @@ export default function PhoneLogPage({ onBackToHome }) {
         </p>
       </header>
 
+      {/* Success Banner */}
       {saveSuccess && (
         <aside
           role="status"
@@ -162,14 +182,30 @@ export default function PhoneLogPage({ onBackToHome }) {
         </aside>
       )}
 
+      {/* Error Banner */}
+      {errorMessage && (
+        <aside
+          role="alert"
+          aria-live="assertive"
+          className="mb-4 p-3 bg-red-50 border border-red-200 text-red-800 text-xs rounded-md flex justify-between items-center"
+        >
+          <span>✕ {errorMessage}</span>
+          <button
+            type="button"
+            onClick={() => setErrorMessage("")}
+            className="text-red-700 hover:text-red-900 font-bold ml-2"
+            aria-label="Fehlermeldung schließen"
+          >
+            ✕
+          </button>
+        </aside>
+      )}
+
       {/* Date row with semantic section and accessible edit button */}
-      <section
-        aria-label="Datumsangabe"
-        className="mb-2 pb-3"
-      >
+      <section aria-label="Datumsangabe" className="mb-5 pb-3 border-b border-gray-100">
         <div className="flex items-center gap-2">
           <span className="text-sm font-semibold text-gray-800">
-            {formatDisplayDate(date)}
+            Datum: {formatDisplayDate(date)}
           </span>
           <button
             type="button"
@@ -209,12 +245,12 @@ export default function PhoneLogPage({ onBackToHome }) {
           members={memberList}
           selectedMember={selectedMember}
           onSelect={(member) => setSelectedMember(member)}
-          placeholder="Mitglied nach Namen suchen..."
+          placeholder="Mitglied nach Name oder Code suchen..."
           required
         />
 
         {/* Row 2: Caller and Duration side by side */}
-        <fieldset className="grid grid-cols-2 gap-3 border-0 p-0 mb-4">
+        <fieldset className="grid grid-cols-2 gap-3 border-0 p-0 m-0">
           <legend className="sr-only">Anrufdetails</legend>
 
           <SelectDropdown
@@ -228,7 +264,7 @@ export default function PhoneLogPage({ onBackToHome }) {
 
           <InputField
             id="duration"
-            label="Dauer (Minuten) "
+            label="Dauer (Min.)"
             type="number"
             min="1"
             placeholder="z. B. 12"
@@ -241,8 +277,8 @@ export default function PhoneLogPage({ onBackToHome }) {
         {/* Row 3: Reason Dropdown (Categories 1-5) */}
         <SelectDropdown
           id="call-reason"
-          label="Grund des Anrufs"
-          placeholder="Grund auswählen"
+          label="Anliegen"
+          placeholder="Bitte Anliegen wählen..."
           value={reason}
           onChange={(e) => setReason(e.target.value)}
           options={CALL_REASONS}
@@ -252,8 +288,8 @@ export default function PhoneLogPage({ onBackToHome }) {
         {/* Row 4: Optional Notes */}
         <TextareaField
           id="note"
-          label="Anmerkung"
-          placeholder="Bei Bedarf eine Anmerkung hinzufügen"
+          label="Notiz (optional)"
+          placeholder="Notiz eingeben falls erforderlich..."
           rows={3}
           value={note}
           onChange={(e) => setNote(e.target.value)}
@@ -264,8 +300,8 @@ export default function PhoneLogPage({ onBackToHome }) {
           <FormButton variant="secondary" onClick={onBackToHome}>
             Abbrechen
           </FormButton>
-          <FormButton type="submit" variant="dark">
-            Speichern
+          <FormButton type="submit" variant="dark" disabled={isSubmitting}>
+            {isSubmitting ? "Wird gespeichert..." : "Eintrag speichern"}
           </FormButton>
         </div>
       </form>
@@ -273,7 +309,7 @@ export default function PhoneLogPage({ onBackToHome }) {
       {/* Verification Modal */}
       <ConfirmationCard
         isOpen={showConfirmation}
-        title="Daten überprüfen"
+        title="Angaben überprüfen"
         items={confirmationItems}
         onCancel={() => setShowConfirmation(false)}
         onConfirm={handleFinalSave}

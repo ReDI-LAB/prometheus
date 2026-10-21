@@ -3,6 +3,7 @@ import InputField from "../components/InputField";
 import MemberSearchSelect from "../components/MemberSearchSelect";
 import FormButton from "../components/FormButton";
 import ConfirmationCard from "../components/ConfirmationCard";
+import { createAttendance } from "../services/api";
 
 // Helper: Calculate previous business day (Mon-Fri) synchronously
 function getPreviousBusinessDay() {
@@ -49,6 +50,8 @@ export default function BabPage({ onBackToHome }) {
   // --- Modal & Feedback States ---
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Mock member records matching the backend SQLAlchemy table structure
   const memberList = [
@@ -98,19 +101,33 @@ export default function BabPage({ onBackToHome }) {
     setShowConfirmation(true);
   }
 
-  // Execute submission feedback, reset inputs, and stay on the form
-  function handleFinalSave() {
+  // Execute persistence call to FastAPI backend
+  async function handleFinalSave() {
     setShowConfirmation(false);
-    setSaveSuccess(true);
+    setErrorMessage("");
+    setIsSubmitting(true);
 
-    // Reset member-specific fields for the next entry
-    setSelectedMember(null);
-    setNote("");
+    try {
+      await createAttendance({
+        member_id: selectedMember.mitglied_id,
+        attendance_date: date,
+        time_in: arrival,
+        time_out: departure || null,
+      });
 
-    // Hide the green success badge after 3 seconds
-    setTimeout(() => {
-      setSaveSuccess(false);
-    }, 3000);
+      setSaveSuccess(true);
+      // Reset member-specific fields (date remains intact for batch entry)
+      setSelectedMember(null);
+      setNote("");
+
+      setTimeout(() => {
+        setSaveSuccess(false);
+      }, 3000);
+    } catch (error) {
+      setErrorMessage(error.message);
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   // Prepare key-value items for the confirmation card
@@ -135,7 +152,7 @@ export default function BabPage({ onBackToHome }) {
   return (
     <article
       aria-labelledby="bab-form-heading"
-      className="max-w-md mx-auto bg-white rounded-2xl shadow-md border border-gray-200 p-8"
+      className="max-w-4xl mx-auto bg-white rounded-2xl shadow-md border border-gray-200 p-8"
     >
       <header className="mb-4">
         <h2 id="bab-form-heading" className="text-lg font-bold text-gray-900">
@@ -146,13 +163,33 @@ export default function BabPage({ onBackToHome }) {
         </p>
       </header>
 
+      {/* Success banner */}
       {saveSuccess && (
         <aside
           role="status"
           aria-live="polite"
           className="mb-4 p-3 bg-green-50 border border-green-200 text-green-800 text-xs rounded-md"
         >
-          ✓ Anwesenheit erfolgreich gespeichert!
+          ✓ Anwesenheit erfolgreich im Backend gespeichert!
+        </aside>
+      )}
+
+      {/* Error banner */}
+      {errorMessage && (
+        <aside
+          role="alert"
+          aria-live="assertive"
+          className="mb-4 p-3 bg-red-50 border border-red-200 text-red-800 text-xs rounded-md flex justify-between items-center"
+        >
+          <span>✕ {errorMessage}</span>
+          <button
+            type="button"
+            onClick={() => setErrorMessage("")}
+            className="text-red-700 hover:text-red-900 font-bold ml-2"
+            aria-label="Fehlermeldung schließen"
+          >
+            ✕
+          </button>
         </aside>
       )}
 
@@ -230,9 +267,7 @@ export default function BabPage({ onBackToHome }) {
         </fieldset>
 
         {/* Row 3: Semantic Output for calculated hours and metadata */}
-
         <dl className="space-y-1.5 pt-1 text-sm" aria-live="polite">
-          {/* Zeile 1: Gesamtdauer */}
           <div className="flex items-baseline gap-1 font-semibold text-gray-900">
             <dt>Gesamtdauer:</dt>
             <dd>
@@ -244,7 +279,6 @@ export default function BabPage({ onBackToHome }) {
             </dd>
           </div>
 
-          {/* Mitgliedsstatus */}
           <div className="flex items-baseline gap-1 text-gray-500">
             <dt>Status:</dt>
             <dd className="font-semibold text-gray-900">
@@ -253,7 +287,6 @@ export default function BabPage({ onBackToHome }) {
             </dd>
           </div>
 
-          {/* Monatszähler */}
           <div className="flex items-baseline gap-1 text-gray-500">
             <dt>Anwesenheiten:</dt>
             <dd className="font-semibold text-gray-900">{attendanceMonthly}</dd>
@@ -289,8 +322,8 @@ export default function BabPage({ onBackToHome }) {
           <FormButton variant="secondary" onClick={onBackToHome}>
             Abbrechen
           </FormButton>
-          <FormButton type="submit" variant="dark">
-            Speichern
+          <FormButton type="submit" variant="dark" disabled={isSubmitting}>
+            {isSubmitting ? "Wird gesendet..." : "Speichern"}
           </FormButton>
         </div>
       </form>

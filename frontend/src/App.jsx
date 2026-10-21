@@ -32,23 +32,29 @@ export default function App() {
   return (
     <div className="min-h-screen bg-gray-200 text-gray-900 font-sans">
       {/* Header: Left logo/branding, Right Clubhouse title & Backend indicator */}
-      <header className="bg-gray-300 border-b border-gray-400 px-8 py-8">
-        <div className="max-w-5xl mx-auto flex items-center justify-center gap-32">
+      <header className="bg-gray-300 border-b border-gray-400 px-6 py-6">
+        <div className="max-w-10xl mx-auto flex items-center justify-around gap-6">
           <div
             onClick={() => setCurrentPage("home")}
-            className="cursor-pointer flex flex-col items-start gap-1"
+            className="cursor-pointer flex flex-row items-end gap-6"
           >
-            <div className="flex items-center gap-2">
-              <img src={homeIcon} alt="Home icon" className="h-14 w-14" />
-              <img
-                src={clubhouseLogo}
-                alt="ClubHaus Logo"
-                className="h-20 w-auto object-contain"
-              />
+            <div className="flex flex-col items-center gap-0.5">
+              
+                <img
+                  src={clubhouseLogo}
+                  alt="ClubHaus Logo"
+                  className="h-22 w-auto object-contain"
+                />
+              
+
+              <h1 className="text-base font-semibold text-gray-800">
+                ClubHaus München Giesing
+              </h1>
             </div>
-            <h1 className="text-xl font-semibold text-gray-800">
-              ClubHaus München Giesing
-            </h1>
+            <div className="flex flex-col items-center gap-0.5">
+              <img src={homeIcon} alt="Home icon" className="h-12 w-12" />
+              <p className="text-base font-semibold text-gray-800">Home</p>
+            </div>
           </div>
 
           <div className="flex items-center gap-6">
@@ -69,7 +75,7 @@ export default function App() {
       </header>
 
       {/* Main semantic area: Swapping views instead of static text */}
-      <main className="max-w-5xl mx-auto px-8 py-10">
+      <main className="max-w-6xl mx-auto px-8 py-10">
         {currentPage === "home" && <HomePage onNavigate={setCurrentPage} />}
         {currentPage === "bab" && (
           <BabPage onBackToHome={() => setCurrentPage("home")} />
