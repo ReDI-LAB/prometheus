@@ -163,6 +163,28 @@ Notes:
 - The SQL script refuses to run — the target database isn't named `prometheus_redi`, isn't PostgreSQL 17+, or already has objects in it.
 - 503 on every request — the backend is reachable but the database isn't; check the container is running and `PROMETHEUS_DATABASE_URL` matches its host, port, and credentials.
 
+### Docker
+
+The `Dockerfile` builds a production-style image of the backend. Build it from the repository root:
+
+```sh
+docker build -t prometheus-backend backend
+```
+
+Run it against a database, passing the connection string as an environment variable. The server listens on the port given by `PORT` (default `8000`); a hosting platform usually provides it:
+
+```sh
+docker run --rm -p 8000:8000 \
+  -e PROMETHEUS_DATABASE_URL="postgresql+asyncpg://postgres:devpass@host.docker.internal:5434/prometheus_redi" \
+  prometheus-backend
+```
+
+To use a different port, set `PORT` and publish the same one, for example `-e PORT=10000 -p 10000:10000`.
+
+`host.docker.internal` resolves to the host machine on Docker Desktop. On Linux, add `--add-host=host.docker.internal:host-gateway` to the `docker run` command. If the database runs in another container, put both on the same Docker network and use the container name as the host instead.
+
+The image never contains `.env`; `.dockerignore` excludes it. Credentials are passed only as environment variables at run time. Without `PROMETHEUS_DATABASE_URL` the container stops with a missing-setting error.
+
 ### Checks
 
 ```sh
