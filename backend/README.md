@@ -122,6 +122,9 @@ Local URLs:
 | GET    | `/api/v1/phone-calls` | List phone calls, filterable by person and date range       |
 | POST   | `/api/v1/attendance`  | Log a member's attendance (time in, optional time out)      |
 | GET    | `/api/v1/attendance`  | List attendance entries, filterable by member and date range |
+| GET    | `/api/v1/members`     | List members for a selector, with search, status filter and paging |
+
+`GET /api/v1/members` reads the `members_current` view. `search` (up to 100 characters) matches every word, case-insensitively, against first name, last name or member code; by default only current members are returned (`include_left=true` also includes members who have left, never anonymized ones), and `activity_status` filters by exact value.
 
 Main status codes: `201` on successful creation, `422` for invalid or unknown data (bad values, a foreign key that doesn't exist), `503` when the database is unavailable or a monthly partition is missing for the given date.
 
