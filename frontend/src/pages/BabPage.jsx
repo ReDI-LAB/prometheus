@@ -1,9 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import InputField from "../components/InputField";
 import MemberSearchSelect from "../components/MemberSearchSelect";
 import FormButton from "../components/FormButton";
 import ConfirmationCard from "../components/ConfirmationCard";
-import { createAttendance } from "../services/api";
+import { createAttendance, fetchMembers } from "../services/api";
 
 // Helper: Calculate previous business day (Mon-Fri) synchronously
 function getPreviousBusinessDay() {
@@ -18,7 +18,6 @@ function getPreviousBusinessDay() {
   return lastWorkday.toISOString().split("T")[0];
 }
 
-// Helper: Calculate duration between arrival and departure times
 /**
  * Calculates human-readable duration in hours and minutes.
  * Examples:
@@ -61,17 +60,21 @@ export default function BabPage({ onBackToHome }) {
   const [departure, setDeparture] = useState("14:00");
   const [note, setNote] = useState("");
 
+  // Live member state fetched from FastAPI backend
+  const [members, setMembers] = useState([]);
+  const [isLoadingMembers, setIsLoadingMembers] = useState(true);
+
   // Tracks selected member from MemberSearchSelect
   const [selectedMember, setSelectedMember] = useState(null);
 
-  // Derived state: Live total hours calculation
+  // Derived state: Live total duration calculation
   const totalHours = calculateDuration(arrival, departure);
 
   // Status badge derived from selected member or default placeholder
   const statusBadge = selectedMember?.mitgliedsstatus
     ? selectedMember.mitgliedsstatus.toUpperCase()
     : "MO";
-  const attendanceMonthly = "9 / Monat"; // Attendance count this month (placeholder)
+  const attendanceMonthly = "9 / Monat"; // Placeholder attendance counter
 
   // --- Modal & Feedback States ---
   const [showConfirmation, setShowConfirmation] = useState(false);
@@ -79,30 +82,20 @@ export default function BabPage({ onBackToHome }) {
   const [errorMessage, setErrorMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Mock member records matching the backend SQLAlchemy table structure
-  const memberList = [
-    {
-      mitglied_id: "a1b2c3d4-0001-4000-8000-000000000001",
-      mitgliedscode: "M-101",
-      vorname: "Jane",
-      nachname: "Doe",
-      mitgliedsstatus: "mo",
-    },
-    {
-      mitglied_id: "a1b2c3d4-0002-4000-8000-000000000002",
-      mitgliedscode: "M-102",
-      vorname: "Max",
-      nachname: "Mustermann",
-      mitgliedsstatus: "m",
-    },
-    {
-      mitglied_id: "a1b2c3d4-0003-4000-8000-000000000003",
-      mitgliedscode: "M-103",
-      vorname: "Erika",
-      nachname: "Musterfrau",
-      mitgliedsstatus: "mo",
-    },
-  ];
+  // Fetch live members on component mount
+  useEffect(() => {
+    fetchMembers()
+      .then((data) => {
+        // Falls data ein Array ist direkt nehmen, sonst data.items auslesen:
+        const memberList = Array.isArray(data) ? data : data.items || [];
+        setMembers(memberList);
+        setIsLoadingMembers(false);
+      })
+      .catch((err) => {
+        console.error("Failed to load members:", err);
+        setIsLoadingMembers(false);
+      });
+  }, []);
 
   // Format date display for German locale (e.g., "Montag, 01.09.2026")
   function formatDisplayDate(dateString) {
@@ -126,7 +119,7 @@ export default function BabPage({ onBackToHome }) {
       return;
     }
 
-    // Validierung: Abgang muss nach Ankunft liegen
+    // Departure must be chronologically after arrival
     if (arrival && departure && departure <= arrival) {
       alert("Die Abgangszeit muss nach der Ankunftszeit liegen.");
       return;
@@ -142,15 +135,18 @@ export default function BabPage({ onBackToHome }) {
     setIsSubmitting(true);
 
     try {
+      // Handles both backend UUID schema (member_id) and legacy mock schema (mitglied_id)
+      const memberId = selectedMember.member_id || selectedMember.mitglied_id;
+
       await createAttendance({
-        member_id: selectedMember.mitglied_id,
+        member_id: memberId,
         attendance_date: date,
         time_in: arrival,
         time_out: departure || null,
       });
 
       setSaveSuccess(true);
-      // Reset member-specific fields (date remains intact for batch entry)
+      // Reset member-specific fields for continuous batch entry
       setSelectedMember(null);
       setNote("");
 
@@ -164,18 +160,21 @@ export default function BabPage({ onBackToHome }) {
     }
   }
 
+  // Member display name helper supporting both camelCase and snake_case models
+  const memberDisplayName = selectedMember
+    ? `${selectedMember.first_name || selectedMember.vorname || ""} ${selectedMember.last_name || selectedMember.nachname || ""}`.trim()
+    : "Kein Mitglied ausgewählt";
+
   // Prepare key-value items for the confirmation card
   const confirmationItems = [
     { label: "Datum", value: formatDisplayDate(date) },
     {
       label: "Name des Mitglieds",
-      value: selectedMember
-        ? `${selectedMember.vorname} ${selectedMember.nachname} (${selectedMember.mitgliedscode})`
-        : "Kein Mitglied ausgewählt",
+      value: memberDisplayName,
     },
     {
-      label: "Zeiten / Gesamtstunden",
-      value: `${arrival} – ${departure} (${totalHours} Std.)`,
+      label: "Zeiten / Gesamtdauer",
+      value: `${arrival} – ${departure} (${totalHours})`,
     },
     {
       label: "Status / Anwesenheit",
@@ -219,7 +218,7 @@ export default function BabPage({ onBackToHome }) {
           <button
             type="button"
             onClick={() => setErrorMessage("")}
-            className="text-red-700 hover:text-red-900 font-bold ml-2"
+            className="text-red-700 hover:text-red-900 font-bold ml-2 cursor-pointer"
             aria-label="Fehlermeldung schließen"
           >
             ✕
@@ -271,10 +270,14 @@ export default function BabPage({ onBackToHome }) {
         <MemberSearchSelect
           id="member-search"
           label="Mitglied"
-          members={memberList}
+          members={members}
           selectedMember={selectedMember}
           onSelect={(member) => setSelectedMember(member)}
-          placeholder="Mitglied nach Namen suchen..."
+          placeholder={
+            isLoadingMembers
+              ? "Lade Mitglieder aus Datenbank..."
+              : "Mitglied nach Namen suchen..."
+          }
           required
         />
 
@@ -291,7 +294,6 @@ export default function BabPage({ onBackToHome }) {
             onChange={(e) => {
               const newArrival = e.target.value;
               setArrival(newArrival);
-              // Optional: Wenn Abgang existiert und plötzlich früher als die neue Ankunft ist, Abgang zurücksetzen
               if (departure && departure <= newArrival) {
                 setDeparture("");
               }
@@ -303,7 +305,7 @@ export default function BabPage({ onBackToHome }) {
             type="time"
             required
             value={departure}
-            min={arrival} // Verhindert im Picker Zeiten vor der Ankunft
+            min={arrival}
             onChange={(e) => setDeparture(e.target.value)}
           />
         </fieldset>
@@ -365,12 +367,12 @@ export default function BabPage({ onBackToHome }) {
         </div>
 
         {/* Row 5: Action buttons */}
-        <div className="flex justify-end gap-3 pt-3">
-          <FormButton variant="secondary" onClick={onBackToHome}>
+        <div className="flex justify-between items-center pt-3">
+          <FormButton type="button" variant="secondary" onClick={onBackToHome}>
             Abbrechen
           </FormButton>
           <FormButton type="submit" variant="dark" disabled={isSubmitting}>
-            {isSubmitting ? "Wird gesendet..." : "Speichern"}
+            {isSubmitting ? "Wird gespeichert..." : "Speichern"}
           </FormButton>
         </div>
       </form>

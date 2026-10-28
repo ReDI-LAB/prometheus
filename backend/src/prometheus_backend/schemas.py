@@ -72,3 +72,22 @@ class AttendancePage(BaseModel):
     total: int
     limit: int
     offset: int
+
+
+class MemberSummary(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    member_id: uuid.UUID
+    member_code: str
+    # Nullable because the database clears names when a member is anonymized.
+    first_name: str | None
+    last_name: str | None
+    membership_status: str
+    activity_status: str | None
+
+
+class MemberPage(BaseModel):
+    items: list[MemberSummary]
+    total: int
+    limit: int
+    offset: int

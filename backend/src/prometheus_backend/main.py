@@ -10,6 +10,7 @@ from prometheus_backend.api.attendance import router as attendance_router
 from prometheus_backend.api.phone_calls import router as phone_calls_router
 from prometheus_backend.database import SessionDep
 from prometheus_backend.settings import Settings
+from prometheus_backend.api import members
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +53,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.include_router(phone_calls_router)
     app.include_router(attendance_router)
+    app.include_router(members.router)
 
     return app
 

@@ -3,8 +3,8 @@
  * Connects frontend forms to FastAPI backend endpoints.
  */
 
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
+// Base URL pointing to local FastAPI backend
+const API_BASE_URL = "http://localhost:8000/api/v1";
 
 /**
  * Custom error class capturing HTTP status and backend detail
@@ -45,9 +45,6 @@ async function extractErrorMessage(response) {
 /**
  * Helper to handle HTTP errors, parsing FastAPI JSON responses {"detail": "..."}
  */
-/**
- * Helper to handle HTTP errors, parsing FastAPI JSON responses {"detail": "..."}
- */
 async function handleResponse(response) {
   if (response.ok) {
     return response.json();
@@ -64,13 +61,13 @@ async function handleResponse(response) {
       );
     case 500:
       throw new ApiError(
-        `Server- / Datenbankfehler (500): ${errorDetail || 'Interner Serverfehler'}`,
+        `Server- / Datenbankfehler (500): ${errorDetail || "Interner Serverfehler"}`,
         500,
         errorDetail
       );
     case 503:
       throw new ApiError(
-        'Datenbank ist derzeit nicht erreichbar (503). Bitte später erneut versuchen.',
+        "Datenbank ist derzeit nicht erreichbar (503). Bitte später erneut versuchen.",
         503,
         errorDetail
       );
@@ -80,6 +77,28 @@ async function handleResponse(response) {
         response.status,
         errorDetail
       );
+  }
+}
+
+/**
+ * Fetches the active member list from the backend database.
+ * 
+ * @returns {Promise<Array>} List of member objects
+ */
+export async function fetchMembers() {
+  try {
+    const response = await fetch(`${API_BASE_URL}/members`);
+    const data = await handleResponse(response);
+    return Array.isArray(data) ? data : data.items || [];
+  } catch (error) {
+    if (error instanceof ApiError) {
+      throw error;
+    }
+    throw new ApiError(
+      "Keine Verbindung zum Backend möglich. Bitte prüfen, ob FastAPI auf Port 8000 läuft.",
+      0,
+      error.message
+    );
   }
 }
 
@@ -100,7 +119,8 @@ export async function createAttendance({
   time_out,
 }) {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/v1/attendance`, {
+    // KORRIGIERT: Kein doppeltes /api/v1 mehr!
+    const response = await fetch(`${API_BASE_URL}/attendance`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -121,7 +141,7 @@ export async function createAttendance({
     throw new ApiError(
       "Keine Verbindung zum Backend möglich. Bitte prüfen, ob FastAPI auf Port 8000 läuft.",
       0,
-      error.message,
+      error.message
     );
   }
 }
@@ -147,7 +167,7 @@ export async function createPhoneCall({
   note,
 }) {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/v1/phone-calls`, {
+    const response = await fetch(`${API_BASE_URL}/phone-calls`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -170,7 +190,7 @@ export async function createPhoneCall({
     throw new ApiError(
       "Keine Verbindung zum Backend möglich. Bitte prüfen, ob FastAPI auf Port 8000 läuft.",
       0,
-      error.message,
+      error.message
     );
   }
 }
