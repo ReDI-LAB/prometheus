@@ -160,7 +160,7 @@ export default function PhoneLogPage({ onBackToHome }) {
   return (
     <article
       aria-labelledby="phone-log-heading"
-      className="max-w-md mx-auto bg-white rounded-2xl shadow-md border border-gray-200 p-8"
+      className="max-w-4xl mx-auto bg-white rounded-2xl shadow-md border border-gray-200 p-8"
     >
       <header className="mb-4">
         <h2 id="phone-log-heading" className="text-lg font-bold text-gray-900">

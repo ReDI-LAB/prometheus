@@ -1,6 +1,6 @@
 import { useState } from "react";
 import InputField from "../components/InputField";
-import BirthDatePicker from "../components/BirthDatePicker";
+import BirthDatePicker from "../components/DatePicker";
 import RadioGroup from "../components/RadioGroup";
 import Accordion from "../components/Accordion";
 import StepProgress from "../components/StepProgress";
@@ -14,13 +14,23 @@ const STEPS = [
   { id: 3, label: "ClubHaus" },
 ];
 
-const TITLE_OPTIONS = [
+// Salutation dropdown options (Anrede)
+const SALUTATION_OPTIONS = [
   { value: "", label: "Auswählen..." },
   { value: "Herr", label: "Herr" },
   { value: "Frau", label: "Frau" },
   { value: "Divers", label: "Divers" },
 ];
 
+// Academic title options (Titel)
+const ACADEMIC_TITLE_OPTIONS = [
+  { value: "", label: "Kein Titel" },
+  { value: "Dr.", label: "Dr." },
+  { value: "Prof.", label: "Prof." },
+  { value: "Prof. Dr.", label: "Prof. Dr." },
+];
+
+// Gender options mapped to standard backend enum values
 const GENDER_OPTIONS = [
   { value: "m", label: "Männlich" },
   { value: "w", label: "Weiblich" },
@@ -35,10 +45,11 @@ const STAFF_OPTIONS = [
   { value: "Mitarbeiter 3", label: "Mitarbeiter 3" },
 ];
 
-// Initial blank form data template aligned with SQLAlchemy model
+// Initial form state matching database column requirements
 const INITIAL_FORM_DATA = {
   // Step 1: Personal Details
   anrede: "",
+  titel: "",
   vorname: "",
   nachname: "",
   geburtsdatum: "",
@@ -66,11 +77,17 @@ const INITIAL_FORM_DATA = {
   aktivitaetsstatus: "Aktiv",
 };
 
-// Maps Munich postal codes to operational sectors with outside-city fallback
+/**
+ * Maps a 5-digit Munich postal code to its administrative sector.
+ * Provides fallback values for areas outside Munich or unknown prefixes.
+ *
+ * @param {string} plz - 5-digit German postal code
+ * @returns {string} Determined sector name in German
+ */
 function getSectorFromPlz(plz) {
   if (!plz || plz.length < 5) return "";
 
-  // Non-Munich areas (e.g. Freising 85354)
+  // Handle areas outside Munich city boundaries
   if (!plz.startsWith("80") && !plz.startsWith("81")) {
     return "Außerhalb";
   }
@@ -84,13 +101,31 @@ function getSectorFromPlz(plz) {
   return "München (Unbekannt)";
 }
 
+/**
+ * Validates basic email formatting: text@domain.tld.
+ * Empty strings are considered valid since the email field is optional.
+ *
+ * @param {string} email - Email address string to test
+ * @returns {boolean} True if valid or empty, false otherwise
+ */
+function isValidEmail(email) {
+  if (!email) return true;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+/**
+ * NewMemberPage Component
+ * 3-step wizard for capturing member master data.
+ *
+ * @param {Function} onBackToHome - Navigation callback returning to the home dashboard
+ */
 export default function NewMemberPage({ onBackToHome }) {
   const [currentStep, setCurrentStep] = useState(1);
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [formData, setFormData] = useState(INITIAL_FORM_DATA);
 
-  // Generic change handler updating form state and triggering PLZ sector calculation
+  // Updates form state and recalculates sector when postal code reaches 5 digits
   function handleChange(field, value) {
     setFormData((prev) => {
       const updated = { ...prev, [field]: value };
@@ -101,9 +136,10 @@ export default function NewMemberPage({ onBackToHome }) {
     });
   }
 
-  // Multi-step validation and forward progression
+  // Handles step-by-step validation and forwards user to next step or confirmation modal
   function handleNextStep(e) {
     e.preventDefault();
+
     if (currentStep === 1) {
       if (
         !formData.vorname.trim() ||
@@ -117,6 +153,13 @@ export default function NewMemberPage({ onBackToHome }) {
       }
       setCurrentStep(2);
     } else if (currentStep === 2) {
+      // Validate optional email format before proceeding
+      if (formData.email && !isValidEmail(formData.email)) {
+        alert(
+          "Bitte geben Sie eine gültige E-Mail-Adresse ein (z. B. name@domain.de).",
+        );
+        return;
+      }
       setCurrentStep(3);
     } else if (currentStep === 3) {
       if (!formData.eintrittsdatum) {
@@ -127,11 +170,12 @@ export default function NewMemberPage({ onBackToHome }) {
     }
   }
 
+  // Navigates one step backward
   function handlePrevStep() {
     setCurrentStep((prev) => Math.max(prev - 1, 1));
   }
 
-  // Final submission: reset wizard to step 1 for continuous batch entry
+  // Resets wizard to step 1 for continuous batch entry after successful save
   function handleFinalSave() {
     setShowConfirmation(false);
     setSaveSuccess(true);
@@ -147,7 +191,7 @@ export default function NewMemberPage({ onBackToHome }) {
   const confirmationItems = [
     {
       label: "Name",
-      value: `${formData.anrede ? formData.anrede + " " : ""}${formData.vorname} ${formData.nachname}`,
+      value: `${formData.anrede ? formData.anrede + " " : ""}${formData.titel ? formData.titel + " " : ""}${formData.vorname} ${formData.nachname}`.trim(),
     },
     { label: "Geburtsdatum", value: formData.geburtsdatum || "-" },
     {
@@ -169,7 +213,7 @@ export default function NewMemberPage({ onBackToHome }) {
   return (
     <article
       aria-labelledby="member-registration-heading"
-      className="max-w-md mx-auto bg-white rounded-2xl shadow-md border border-gray-200 p-8"
+      className="max-w-4xl mx-auto bg-white rounded-2xl shadow-md border border-gray-200 p-8"
     >
       <header className="mb-4">
         <h2
@@ -183,9 +227,10 @@ export default function NewMemberPage({ onBackToHome }) {
         </p>
       </header>
 
-      {/* Accessible step indicator */}
+      {/* Accessible visual step progress indicator */}
       <StepProgress steps={STEPS} currentStep={currentStep} />
 
+      {/* Success notification banner */}
       {saveSuccess && (
         <aside
           role="status"
@@ -207,31 +252,53 @@ export default function NewMemberPage({ onBackToHome }) {
         </aside>
       )}
 
-      {/* Wizard Form */}
+      {/* Main wizard form */}
       <form onSubmit={handleNextStep} className="space-y-4">
-        {/* ================= SCHRITT 1: PERSÖNLICHE DATEN ================= */}
+        {/* Step 1: Personal Details */}
         {currentStep === 1 && (
           <fieldset className="space-y-4 border-0 p-0 m-0">
             <legend className="w-full text-xs font-semibold uppercase tracking-wider text-gray-700 bg-gray-100 p-2 rounded-md mb-2">
               Persönliche Daten
             </legend>
 
-            {/* 3-Column layout: Anrede, Vorname, Nachname */}
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-4 gap-3">
+              {/* Salutation Dropdown (Anrede) */}
               <div className="flex flex-col gap-1">
                 <label
-                  htmlFor="title"
+                  htmlFor="salutation"
                   className="text-sm font-semibold text-gray-800"
                 >
                   Anrede
                 </label>
                 <select
-                  id="title"
+                  id="salutation"
                   value={formData.anrede}
                   onChange={(e) => handleChange("anrede", e.target.value)}
                   className="h-10 w-full rounded-md border border-gray-300 px-2 text-sm bg-white shadow-xs focus:ring-2 focus:ring-blue-500 focus:outline-none"
                 >
-                  {TITLE_OPTIONS.map((opt) => (
+                  {SALUTATION_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Academic Title Dropdown (Titel) */}
+              <div className="flex flex-col gap-1">
+                <label
+                  htmlFor="title"
+                  className="text-sm font-semibold text-gray-800"
+                >
+                  Titel
+                </label>
+                <select
+                  id="title"
+                  value={formData.titel}
+                  onChange={(e) => handleChange("titel", e.target.value)}
+                  className="h-10 w-full rounded-md border border-gray-300 px-2 text-sm bg-white shadow-xs focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                >
+                  {ACADEMIC_TITLE_OPTIONS.map((opt) => (
                     <option key={opt.value} value={opt.value}>
                       {opt.label}
                     </option>
@@ -246,6 +313,7 @@ export default function NewMemberPage({ onBackToHome }) {
                 onChange={(e) => handleChange("vorname", e.target.value)}
                 placeholder="z. B. Max"
                 required
+                onlyLetters
               />
 
               <InputField
@@ -255,10 +323,10 @@ export default function NewMemberPage({ onBackToHome }) {
                 onChange={(e) => handleChange("nachname", e.target.value)}
                 placeholder="z. B. Mustermann"
                 required
+                onlyLetters
               />
             </div>
 
-            {/* Birth Date Picker */}
             <BirthDatePicker
               label="Geburtsdatum"
               value={formData.geburtsdatum}
@@ -266,7 +334,6 @@ export default function NewMemberPage({ onBackToHome }) {
               required
             />
 
-            {/* German Radio Group for Gender */}
             <RadioGroup
               label="Geschlecht"
               name="gender"
@@ -277,7 +344,7 @@ export default function NewMemberPage({ onBackToHome }) {
           </fieldset>
         )}
 
-        {/* ================= SCHRITT 2: KONTAKTDATEN ================= */}
+        {/* Step 2: Contact Details */}
         {currentStep === 2 && (
           <fieldset className="space-y-4 border-0 p-0 m-0">
             <legend className="w-full text-xs font-semibold uppercase tracking-wider text-gray-700 bg-gray-100 p-2 rounded-md mb-2">
@@ -302,12 +369,14 @@ export default function NewMemberPage({ onBackToHome }) {
                 onChange={(e) => handleChange("postleitzahl", e.target.value)}
                 placeholder="z. B. 81539"
                 maxLength={5}
+                onlyNumbers
               />
               <InputField
                 id="city"
                 label="Stadt / Ort"
                 value={formData.ort}
                 onChange={(e) => handleChange("ort", e.target.value)}
+                onlyLetters
               />
             </div>
 
@@ -317,6 +386,7 @@ export default function NewMemberPage({ onBackToHome }) {
                 label="Land"
                 value={formData.land}
                 onChange={(e) => handleChange("land", e.target.value)}
+                onlyLetters
               />
               <InputField
                 id="sector"
@@ -324,6 +394,7 @@ export default function NewMemberPage({ onBackToHome }) {
                 value={formData.sektor}
                 onChange={(e) => handleChange("sektor", e.target.value)}
                 placeholder="Automatisch aus PLZ"
+                readOnly
               />
             </div>
 
@@ -339,13 +410,14 @@ export default function NewMemberPage({ onBackToHome }) {
                   <span className="inline-flex items-center px-2.5 rounded-l-md border border-r-0 border-gray-300 bg-gray-50 text-gray-600 text-xs select-none">
                     🇩🇪 +49
                   </span>
-                  <input
+                  <InputField
                     id="mobile"
                     type="tel"
                     value={formData.mobile}
                     onChange={(e) => handleChange("mobile", e.target.value)}
                     placeholder="170 1234567"
-                    className="h-10 w-full rounded-r-md border border-gray-300 px-3 text-sm text-gray-900 bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                    maxLength={11}
+                    onlyNumbers
                   />
                 </div>
               </div>
@@ -357,6 +429,8 @@ export default function NewMemberPage({ onBackToHome }) {
                 value={formData.telefon}
                 onChange={(e) => handleChange("telefon", e.target.value)}
                 placeholder="089 123456"
+                maxLength={10}
+                onlyNumbers
               />
             </div>
 
@@ -365,11 +439,18 @@ export default function NewMemberPage({ onBackToHome }) {
               label="E-Mail"
               type="email"
               value={formData.email}
-              onChange={(e) => handleChange("email", e.target.value)}
-              placeholder="name@beispiel.de"
+              onChange={(e) => {
+                // Strip spaces directly on input
+                const noSpaces = e.target.value.replace(/\s/g, "");
+                handleChange("email", noSpaces);
+              }}
+              placeholder="beispiel@domain.de"
+              autoComplete="email"
+              autoCapitalize="none"
+              spellCheck={false}
             />
 
-            {/* Collapsible Emergency Contact */}
+            {/* Collapsible Emergency Contact Section */}
             <Accordion title="Notfallkontakt">
               <div className="space-y-3 pt-2">
                 <InputField
@@ -378,6 +459,7 @@ export default function NewMemberPage({ onBackToHome }) {
                   value={formData.notfall_name}
                   onChange={(e) => handleChange("notfall_name", e.target.value)}
                   placeholder="z. B. Maria Mustermann"
+                  onlyLetters
                 />
                 <div className="grid grid-cols-2 gap-3">
                   <InputField
@@ -388,6 +470,7 @@ export default function NewMemberPage({ onBackToHome }) {
                       handleChange("notfall_beziehung", e.target.value)
                     }
                     placeholder="z. B. Mutter, Betreuer"
+                    onlyLetters
                   />
                   <InputField
                     id="emergency-phone"
@@ -398,6 +481,7 @@ export default function NewMemberPage({ onBackToHome }) {
                       handleChange("notfall_mobile", e.target.value)
                     }
                     placeholder="0151 9876543"
+                    onlyNumbers
                   />
                 </div>
               </div>
@@ -405,19 +489,17 @@ export default function NewMemberPage({ onBackToHome }) {
           </fieldset>
         )}
 
-        {/* ================= SCHRITT 3: CLUBHAUS ================= */}
+        {/* Step 3: Clubhouse Details */}
         {currentStep === 3 && (
           <fieldset className="space-y-4 border-0 p-0 m-0">
             <legend className="w-full text-xs font-semibold uppercase tracking-wider text-gray-700 bg-gray-100 p-2 rounded-md mb-2">
               ClubHaus
             </legend>
 
-            <InputField
-              id="enrolment-date"
+            <BirthDatePicker
               label="Eintrittsdatum"
-              type="date"
               value={formData.eintrittsdatum}
-              onChange={(e) => handleChange("eintrittsdatum", e.target.value)}
+              onChange={(val) => handleChange("eintrittsdatum", val)}
               required
             />
 
@@ -446,7 +528,7 @@ export default function NewMemberPage({ onBackToHome }) {
           </fieldset>
         )}
 
-        {/* Bottom Navigation Buttons */}
+        {/* Bottom form navigation controls */}
         <div className="flex justify-between items-center pt-4 border-t border-gray-100">
           {currentStep > 1 ? (
             <FormButton
@@ -472,7 +554,7 @@ export default function NewMemberPage({ onBackToHome }) {
         </div>
       </form>
 
-      {/* Confirmation Modal */}
+      {/* Verification modal before final submission */}
       <ConfirmationCard
         isOpen={showConfirmation}
         title="Angaben überprüfen"

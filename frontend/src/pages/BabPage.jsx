@@ -19,12 +19,38 @@ function getPreviousBusinessDay() {
 }
 
 // Helper: Calculate duration between arrival and departure times
+/**
+ * Calculates human-readable duration in hours and minutes.
+ * Examples:
+ *   "09:00" -> "14:30" => "5 Std. 30 Min."
+ *   "09:00" -> "14:00" => "5 Std."
+ *   "09:00" -> "09:45" => "45 Min."
+ *   Invalid / equal   => "0 Std."
+ *
+ * @param {string} arrival - "HH:MM"
+ * @param {string} departure - "HH:MM"
+ * @returns {string} Formatted duration string
+ */
 function calculateDuration(arrival, departure) {
-  if (!arrival || !departure) return "0.0";
+  if (!arrival || !departure) return "0 Std.";
+
   const [aH, aM] = arrival.split(":").map(Number);
   const [dH, dM] = departure.split(":").map(Number);
+
   const diffMinutes = dH * 60 + dM - (aH * 60 + aM);
-  return diffMinutes > 0 ? (diffMinutes / 60).toFixed(1) : "0.0";
+
+  if (diffMinutes <= 0) return "0 Std.";
+
+  const hours = Math.floor(diffMinutes / 60);
+  const minutes = diffMinutes % 60;
+
+  if (hours > 0 && minutes > 0) {
+    return `${hours} Std. ${minutes} Min.`;
+  }
+  if (hours > 0) {
+    return `${hours} Std.`;
+  }
+  return `${minutes} Min.`;
 }
 
 export default function BabPage({ onBackToHome }) {
@@ -94,10 +120,18 @@ export default function BabPage({ onBackToHome }) {
   // Intercept submit event to validate and open verification modal
   function handleFormSubmit(e) {
     e.preventDefault();
+
     if (!selectedMember) {
       alert("Bitte wählen Sie ein Mitglied aus.");
       return;
     }
+
+    // Validierung: Abgang muss nach Ankunft liegen
+    if (arrival && departure && departure <= arrival) {
+      alert("Die Abgangszeit muss nach der Ankunftszeit liegen.");
+      return;
+    }
+
     setShowConfirmation(true);
   }
 
@@ -254,7 +288,14 @@ export default function BabPage({ onBackToHome }) {
             type="time"
             required
             value={arrival}
-            onChange={(e) => setArrival(e.target.value)}
+            onChange={(e) => {
+              const newArrival = e.target.value;
+              setArrival(newArrival);
+              // Optional: Wenn Abgang existiert und plötzlich früher als die neue Ankunft ist, Abgang zurücksetzen
+              if (departure && departure <= newArrival) {
+                setDeparture("");
+              }
+            }}
           />
           <InputField
             id="departure"
@@ -262,20 +303,26 @@ export default function BabPage({ onBackToHome }) {
             type="time"
             required
             value={departure}
+            min={arrival} // Verhindert im Picker Zeiten vor der Ankunft
             onChange={(e) => setDeparture(e.target.value)}
           />
         </fieldset>
+
+        {arrival && departure && departure <= arrival && (
+          <p
+            className="text-xs text-red-600 font-medium -mt-2 mb-3"
+            role="alert"
+          >
+            Hinweis: Die Abgangszeit muss nach der Ankunftszeit liegen.
+          </p>
+        )}
 
         {/* Row 3: Semantic Output for calculated hours and metadata */}
         <dl className="space-y-1.5 pt-1 text-sm" aria-live="polite">
           <div className="flex items-baseline gap-1 font-semibold text-gray-900">
             <dt>Gesamtdauer:</dt>
             <dd>
-              <output htmlFor="arrival departure">
-                {Number(totalHours) > 0
-                  ? `${totalHours.replace(".0", "")} Std.`
-                  : "0 Std."}
-              </output>
+              <output htmlFor="arrival departure">{totalHours}</output>
             </dd>
           </div>
 
