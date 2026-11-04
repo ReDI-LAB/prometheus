@@ -1,13 +1,16 @@
-import { useState } from "react";
-import InputField from "../components/InputField";
-import MemberSearchSelect from "../components/MemberSearchSelect";
-import SelectDropdown from "../components/SelectDropdown";
-import TextareaField from "../components/TextareaField";
-import FormButton from "../components/FormButton";
-import ConfirmationCard from "../components/ConfirmationCard";
-import { createPhoneCall } from "../services/api";
+import { useState, useEffect } from 'react';
+import InputField from '../components/InputField';
+import MemberSearchSelect from '../components/MemberSearchSelect';
+import SelectDropdown from '../components/SelectDropdown';
+import TextareaField from '../components/TextareaField';
+import FormButton from '../components/FormButton';
+import ConfirmationCard from '../components/ConfirmationCard';
+import { fetchMembers, createPhoneCall } from '../services/api';
 
-// Helper: Synchronously calculate previous business day (Mon-Fri)
+/**
+ * Calculates previous business day (Mon-Fri) synchronously.
+ * @returns {string} YYYY-MM-DD
+ */
 function getPreviousBusinessDay() {
   const today = new Date();
   const day = today.getDay(); // 0 = Sunday, 1 = Monday
@@ -17,101 +20,105 @@ function getPreviousBusinessDay() {
 
   const lastWorkday = new Date(today);
   lastWorkday.setDate(today.getDate() - diff);
-  return lastWorkday.toISOString().split("T")[0];
+  return lastWorkday.toISOString().split('T')[0];
 }
 
-// 5 standardized reason categories aligned with latest Figma mockups
+// Standardized categories (1-5) matching backend topic_code
 const CALL_REASONS = [
-  { value: "1", label: "1 · Schichtanmeldung" },
-  { value: "2", label: "2 · Clubhaus-Angelegenheiten" },
-  { value: "3", label: "3 · Beratungsgespräch" },
-  { value: "4", label: "4 · Krisenintervention" },
-  { value: "5", label: "5 · Begleitgespräch" },
+  { value: '1', label: '1 · Schichtanmeldung' },
+  { value: '2', label: '2 · Clubhaus-Angelegenheiten' },
+  { value: '3', label: '3 · Beratungsgespräch' },
+  { value: '4', label: '4 · Krisenintervention' },
+  { value: '5', label: '5 · Begleitgespräch' },
 ];
 
-// Caller options according to UI/UX specifications (Member vs. Staff)
+// Caller identity options
 const CALLER_OPTIONS = [
-  { value: "member", label: "Mitglied" },
-  { value: "staff", label: "Mitarbeiter" },
+  { value: 'member', label: 'Mitglied' },
+  { value: 'staff', label: 'Mitarbeiter' },
 ];
 
 export default function PhoneLogPage({ onBackToHome }) {
   // --- Form Input States ---
   const [date, setDate] = useState(getPreviousBusinessDay);
   const [isEditingDate, setIsEditingDate] = useState(false);
+  const [members, setMembers] = useState([]);
   const [selectedMember, setSelectedMember] = useState(null);
-  const [caller, setCaller] = useState("member");
-  const [duration, setDuration] = useState("");
-  const [reason, setReason] = useState("");
-  const [note, setNote] = useState("");
+  const [caller, setCaller] = useState('member');
+  const [duration, setDuration] = useState('');
+  const [reason, setReason] = useState('');
+  const [note, setNote] = useState('');
 
-  // --- Modal & Feedback States ---
+  // --- UI & Network Feedback States ---
+  const [isLoadingMembers, setIsLoadingMembers] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
-  const [errorMessage, setErrorMessage] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
 
-  // Temporary mock member data structured to match the backend SQLAlchemy table
-  const memberList = [
-    {
-      mitglied_id: "a1b2c3d4-0001-4000-8000-000000000001",
-      mitgliedscode: "M-101",
-      vorname: "Jane",
-      nachname: "Doe",
-      mitgliedsstatus: "mo",
-    },
-    {
-      mitglied_id: "a1b2c3d4-0002-4000-8000-000000000002",
-      mitgliedscode: "M-102",
-      vorname: "Max",
-      nachname: "Mustermann",
-      mitgliedsstatus: "m",
-    },
-    {
-      mitglied_id: "a1b2c3d4-0003-4000-8000-000000000003",
-      mitgliedscode: "M-103",
-      vorname: "Erika",
-      nachname: "Musterfrau",
-      mitgliedsstatus: "mo",
-    },
-  ];
+  // Fetch live active members on mount
+  useEffect(() => {
+    let isMounted = true;
 
-  // Format date display for German locale (e.g., "Montag, 01.09.2026")
-  function formatDisplayDate(dateString) {
-    if (!dateString) return "";
-    const d = new Date(dateString);
-    const options = {
-      weekday: "long",
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
+    async function loadMembers() {
+      try {
+        setIsLoadingMembers(true);
+        const data = await fetchMembers();
+        if (isMounted) {
+          setMembers(data);
+        }
+      } catch (err) {
+        if (isMounted) {
+          setErrorMessage(err.message || 'Mitgliederliste konnte nicht geladen werden.');
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoadingMembers(false);
+        }
+      }
+    }
+
+    loadMembers();
+    return () => {
+      isMounted = false;
     };
-    return d.toLocaleDateString("de-DE", options);
+  }, []);
+
+  // Format date display for German locale (e.g. "Montag, 01.09.2026")
+  function formatDisplayDate(dateString) {
+    if (!dateString) return '';
+    const d = new Date(dateString);
+    return d.toLocaleDateString('de-DE', {
+      weekday: 'long',
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+    });
   }
 
-  // Intercept submit event to validate fields and open verification modal
+  // Form submission: open confirmation card
   function handleFormSubmit(e) {
     e.preventDefault();
     if (!selectedMember) {
-      alert("Bitte wählen Sie ein Mitglied aus.");
+      alert('Bitte wählen Sie ein Mitglied aus.');
       return;
     }
     if (!reason) {
-      alert("Bitte wählen Sie den Grund des Anrufs aus.");
+      alert('Bitte wählen Sie den Grund des Anrufs aus.');
       return;
     }
     setShowConfirmation(true);
   }
 
-  // Execute submission to backend, clear member inputs, and stay on form for batch entry
+  // Final persistence call to FastAPI endpoint POST /api/v1/phone-calls
   async function handleFinalSave() {
     setShowConfirmation(false);
-    setErrorMessage("");
+    setErrorMessage('');
     setIsSubmitting(true);
 
     try {
       await createPhoneCall({
-        person_id: selectedMember.mitglied_id,
+        person_id: selectedMember.member_id, // backend UUID identifier
         person_type: caller,
         call_date: date,
         duration_minutes: duration,
@@ -120,41 +127,40 @@ export default function PhoneLogPage({ onBackToHome }) {
       });
 
       setSaveSuccess(true);
-      // Reset caller-specific fields while keeping the date intact for paper lists
+
+      // Reset member-specific fields for efficient batch entry, preserving date
       setSelectedMember(null);
-      setDuration("");
-      setReason("");
-      setNote("");
-      setCaller("member");
+      setDuration('');
+      setReason('');
+      setNote('');
+      setCaller('member');
 
       setTimeout(() => {
         setSaveSuccess(false);
       }, 3000);
-    } catch (error) {
-      setErrorMessage(error.message);
+    } catch (err) {
+      setErrorMessage(err.message || 'Fehler beim Speichern der Telefondokumentation.');
     } finally {
       setIsSubmitting(false);
     }
   }
 
-  // Lookup selected labels for verification modal
   const selectedReasonLabel =
-    CALL_REASONS.find((r) => r.value === reason)?.label || "Nicht ausgewählt";
+    CALL_REASONS.find((r) => r.value === reason)?.label || 'Nicht ausgewählt';
   const selectedCallerLabel =
     CALLER_OPTIONS.find((c) => c.value === caller)?.label || caller;
 
-  // Prepare key-value items for the confirmation card
   const confirmationItems = [
-    { label: "Datum", value: formatDisplayDate(date) },
+    { label: 'Datum', value: formatDisplayDate(date) },
     {
-      label: "Mitglied",
+      label: 'Mitglied',
       value: selectedMember
-        ? `${selectedMember.vorname} ${selectedMember.nachname} (${selectedMember.mitgliedscode})`
-        : "",
+        ? `${selectedMember.first_name} ${selectedMember.last_name} (${selectedMember.member_code})`
+        : '',
     },
-    { label: "Anrufer / Anruferin", value: selectedCallerLabel },
-    { label: "Dauer", value: `${duration} Minuten` },
-    { label: "Grund des Anrufs", value: selectedReasonLabel },
+    { label: 'Wer telefoniert', value: selectedCallerLabel },
+    { label: 'Dauer', value: `${duration} Minuten` },
+    { label: 'Grund des Anrufs', value: selectedReasonLabel },
   ];
 
   return (
@@ -171,7 +177,7 @@ export default function PhoneLogPage({ onBackToHome }) {
         </p>
       </header>
 
-      {/* Success Banner */}
+      {/* Success Notification */}
       {saveSuccess && (
         <aside
           role="status"
@@ -182,7 +188,7 @@ export default function PhoneLogPage({ onBackToHome }) {
         </aside>
       )}
 
-      {/* Error Banner */}
+      {/* Error Notification */}
       {errorMessage && (
         <aside
           role="alert"
@@ -192,8 +198,8 @@ export default function PhoneLogPage({ onBackToHome }) {
           <span>✕ {errorMessage}</span>
           <button
             type="button"
-            onClick={() => setErrorMessage("")}
-            className="text-red-700 hover:text-red-900 font-bold ml-2"
+            onClick={() => setErrorMessage('')}
+            className="text-red-700 hover:text-red-900 font-bold ml-2 cursor-pointer"
             aria-label="Fehlermeldung schließen"
           >
             ✕
@@ -201,7 +207,7 @@ export default function PhoneLogPage({ onBackToHome }) {
         </aside>
       )}
 
-      {/* Date row with semantic section and accessible edit button */}
+      {/* Date Header with Edit Toggle */}
       <section aria-label="Datumsangabe" className="mb-5 pb-3 border-b border-gray-100">
         <div className="flex items-center gap-2">
           <span className="text-sm font-semibold text-gray-800">
@@ -238,18 +244,18 @@ export default function PhoneLogPage({ onBackToHome }) {
 
       {/* Semantic Form */}
       <form onSubmit={handleFormSubmit} className="space-y-4">
-        {/* Row 1: Searchable Member Selection */}
+        {/* Row 1: Searchable Member Combobox */}
         <MemberSearchSelect
           id="member-search"
           label="Mitglied"
-          members={memberList}
+          members={members}
           selectedMember={selectedMember}
           onSelect={(member) => setSelectedMember(member)}
-          placeholder="Mitglied nach Name oder Code suchen..."
+          placeholder={isLoadingMembers ? 'Lade Mitglieder...' : 'Mitglied nach Name oder Code suchen...'}
           required
         />
 
-        {/* Row 2: Caller and Duration side by side */}
+        {/* Row 2: Caller and Duration */}
         <fieldset className="grid grid-cols-2 gap-3 border-0 p-0 m-0">
           <legend className="sr-only">Anrufdetails</legend>
 
@@ -274,10 +280,10 @@ export default function PhoneLogPage({ onBackToHome }) {
           />
         </fieldset>
 
-        {/* Row 3: Reason Dropdown (Categories 1-5) */}
+        {/* Row 3: Reason Categories */}
         <SelectDropdown
           id="call-reason"
-          label="Anliegen"
+          label="Grund des Anrufs"
           placeholder="Bitte Anliegen wählen..."
           value={reason}
           onChange={(e) => setReason(e.target.value)}
@@ -285,7 +291,7 @@ export default function PhoneLogPage({ onBackToHome }) {
           required
         />
 
-        {/* Row 4: Optional Notes */}
+        {/* Row 4: Optional Freeform Note */}
         <TextareaField
           id="note"
           label="Notiz (optional)"
@@ -295,13 +301,13 @@ export default function PhoneLogPage({ onBackToHome }) {
           onChange={(e) => setNote(e.target.value)}
         />
 
-        {/* Row 5: Action Buttons */}
+        {/* Row 5: Action Controls */}
         <div className="flex justify-end gap-3 pt-3">
           <FormButton variant="secondary" onClick={onBackToHome}>
             Abbrechen
           </FormButton>
           <FormButton type="submit" variant="dark" disabled={isSubmitting}>
-            {isSubmitting ? "Wird gespeichert..." : "Eintrag speichern"}
+            {isSubmitting ? 'Wird gespeichert...' : 'Eintrag speichern'}
           </FormButton>
         </div>
       </form>
