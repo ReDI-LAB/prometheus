@@ -57,32 +57,32 @@ async function handleResponse(response) {
       throw new ApiError(
         `Ungültige Eingabedaten (422): ${errorDetail}`,
         422,
-        errorDetail
+        errorDetail,
       );
     case 500:
       throw new ApiError(
         `Server- / Datenbankfehler (500): ${errorDetail || "Interner Serverfehler"}`,
         500,
-        errorDetail
+        errorDetail,
       );
     case 503:
       throw new ApiError(
         "Datenbank ist derzeit nicht erreichbar (503). Bitte später erneut versuchen.",
         503,
-        errorDetail
+        errorDetail,
       );
     default:
       throw new ApiError(
         `Serverfehler (${response.status}): ${errorDetail}`,
         response.status,
-        errorDetail
+        errorDetail,
       );
   }
 }
 
 /**
  * Fetches the active member list from the backend database.
- * 
+ *
  * @returns {Promise<Array>} List of member objects
  */
 export async function fetchMembers() {
@@ -97,7 +97,7 @@ export async function fetchMembers() {
     throw new ApiError(
       "Keine Verbindung zum Backend möglich. Bitte prüfen, ob FastAPI auf Port 8000 läuft.",
       0,
-      error.message
+      error.message,
     );
   }
 }
@@ -141,7 +141,7 @@ export async function createAttendance({
     throw new ApiError(
       "Keine Verbindung zum Backend möglich. Bitte prüfen, ob FastAPI auf Port 8000 läuft.",
       0,
-      error.message
+      error.message,
     );
   }
 }
@@ -190,7 +190,36 @@ export async function createPhoneCall({
     throw new ApiError(
       "Keine Verbindung zum Backend möglich. Bitte prüfen, ob FastAPI auf Port 8000 läuft.",
       0,
-      error.message
+      error.message,
+    );
+  }
+}
+
+/**
+ * Register a new member in the database.
+ *
+ * @param {Object} memberData - Member master data matching backend schema
+ * @returns {Promise<Object>} Created member record
+ */
+export async function createMember(memberData) {
+  try {
+    const response = await fetch(`${API_BASE_URL}/members`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(memberData),
+    });
+
+    return await handleResponse(response);
+  } catch (error) {
+    if (error instanceof ApiError) {
+      throw error;
+    }
+    throw new ApiError(
+      "Keine Verbindung zum Backend möglich. Bitte prüfen, ob FastAPI läuft.",
+      0,
+      error.message,
     );
   }
 }

@@ -6,38 +6,31 @@ import Accordion from "../components/Accordion";
 import StepProgress from "../components/StepProgress";
 import FormButton from "../components/FormButton";
 import ConfirmationCard from "../components/ConfirmationCard";
+//import { createMember } from "../services/api";
 
-// Step definitions for the multi-step registration wizard
 const STEPS = [
   { id: 1, label: "Persönliche Daten" },
   { id: 2, label: "Kontaktdaten" },
   { id: 3, label: "ClubHaus" },
 ];
 
-// Salutation dropdown options (Anrede)
+// Kombiniertes Dropdown für Anrede & Titel
 const SALUTATION_OPTIONS = [
   { value: "", label: "Auswählen..." },
   { value: "Herr", label: "Herr" },
   { value: "Frau", label: "Frau" },
   { value: "Divers", label: "Divers" },
-];
-
-// Academic title options (Titel)
-const ACADEMIC_TITLE_OPTIONS = [
-  { value: "", label: "Kein Titel" },
   { value: "Dr.", label: "Dr." },
   { value: "Prof.", label: "Prof." },
   { value: "Prof. Dr.", label: "Prof. Dr." },
 ];
 
-// Gender options mapped to standard backend enum values
 const GENDER_OPTIONS = [
   { value: "m", label: "Männlich" },
   { value: "w", label: "Weiblich" },
   { value: "d", label: "Divers" },
 ];
 
-// Predefined staff list for the orientation interview dropdown
 const STAFF_OPTIONS = [
   { value: "", label: "Mitarbeitenden auswählen..." },
   { value: "Mitarbeiter 1", label: "Mitarbeiter 1" },
@@ -45,11 +38,9 @@ const STAFF_OPTIONS = [
   { value: "Mitarbeiter 3", label: "Mitarbeiter 3" },
 ];
 
-// Initial form state matching database column requirements
 const INITIAL_FORM_DATA = {
-  // Step 1: Personal Details
+  // Step 1: Personal Details (anrede enthält Titel)
   anrede: "",
-  titel: "",
   vorname: "",
   nachname: "",
   geburtsdatum: "",
@@ -65,7 +56,7 @@ const INITIAL_FORM_DATA = {
   telefon: "",
   email: "",
 
-  // Emergency Contact (Accordion)
+  // Emergency Contact
   notfall_name: "",
   notfall_beziehung: "",
   notfall_mobile: "",
@@ -77,17 +68,9 @@ const INITIAL_FORM_DATA = {
   aktivitaetsstatus: "Aktiv",
 };
 
-/**
- * Maps a 5-digit Munich postal code to its administrative sector.
- * Provides fallback values for areas outside Munich or unknown prefixes.
- *
- * @param {string} plz - 5-digit German postal code
- * @returns {string} Determined sector name in German
- */
 function getSectorFromPlz(plz) {
   if (!plz || plz.length < 5) return "";
 
-  // Handle areas outside Munich city boundaries
   if (!plz.startsWith("80") && !plz.startsWith("81")) {
     return "Außerhalb";
   }
@@ -101,31 +84,20 @@ function getSectorFromPlz(plz) {
   return "München (Unbekannt)";
 }
 
-/**
- * Validates basic email formatting: text@domain.tld.
- * Empty strings are considered valid since the email field is optional.
- *
- * @param {string} email - Email address string to test
- * @returns {boolean} True if valid or empty, false otherwise
- */
 function isValidEmail(email) {
   if (!email) return true;
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
-/**
- * NewMemberPage Component
- * 3-step wizard for capturing member master data.
- *
- * @param {Function} onBackToHome - Navigation callback returning to the home dashboard
- */
-export default function NewMemberPage({ onBackToHome }) {
+export default function NewMemberForm({ onBackToHome }) {
   const [currentStep, setCurrentStep] = useState(1);
-  const [showConfirmation, setShowConfirmation] = useState(false);
-  const [saveSuccess, setSaveSuccess] = useState(false);
   const [formData, setFormData] = useState(INITIAL_FORM_DATA);
 
-  // Updates form state and recalculates sector when postal code reaches 5 digits
+  const [isSubmitting] = useState(false);
+  const [showConfirmation, setShowConfirmation] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
+
   function handleChange(field, value) {
     setFormData((prev) => {
       const updated = { ...prev, [field]: value };
@@ -136,9 +108,9 @@ export default function NewMemberPage({ onBackToHome }) {
     });
   }
 
-  // Handles step-by-step validation and forwards user to next step or confirmation modal
   function handleNextStep(e) {
     e.preventDefault();
+    setErrorMessage("");
 
     if (currentStep === 1) {
       if (
@@ -146,16 +118,15 @@ export default function NewMemberPage({ onBackToHome }) {
         !formData.nachname.trim() ||
         !formData.geburtsdatum
       ) {
-        alert(
+        setErrorMessage(
           "Bitte füllen Sie alle Pflichtfelder (*) in den persönlichen Daten aus.",
         );
         return;
       }
       setCurrentStep(2);
     } else if (currentStep === 2) {
-      // Validate optional email format before proceeding
       if (formData.email && !isValidEmail(formData.email)) {
-        alert(
+        setErrorMessage(
           "Bitte geben Sie eine gültige E-Mail-Adresse ein (z. B. name@domain.de).",
         );
         return;
@@ -163,21 +134,49 @@ export default function NewMemberPage({ onBackToHome }) {
       setCurrentStep(3);
     } else if (currentStep === 3) {
       if (!formData.eintrittsdatum) {
-        alert("Bitte geben Sie das Eintrittsdatum an.");
+        setErrorMessage("Bitte geben Sie das Eintrittsdatum an.");
         return;
       }
       setShowConfirmation(true);
     }
   }
 
-  // Navigates one step backward
   function handlePrevStep() {
+    setErrorMessage("");
     setCurrentStep((prev) => Math.max(prev - 1, 1));
   }
 
-  // Resets wizard to step 1 for continuous batch entry after successful save
+  // Handles final confirmation locally until backend POST /api/v1/members is delivered by Ai
   function handleFinalSave() {
     setShowConfirmation(false);
+    setErrorMessage("");
+
+    // Prepare complete payload matching database & schema requirements
+    const memberPayload = {
+      anrede: formData.anrede || null,
+      first_name: formData.vorname.trim(),
+      last_name: formData.nachname.trim(),
+      date_of_birth: formData.geburtsdatum,
+      gender: formData.geschlecht,
+      street_house_number: formData.strasse_hausnummer || null,
+      postal_code: formData.postleitzahl || null,
+      city: formData.ort || null,
+      country: formData.land || null,
+      sector: formData.sektor || null,
+      mobile_phone: formData.mobile ? `+49${formData.mobile}` : null,
+      phone: formData.telefon || null,
+      email: formData.email || null,
+      emergency_contact_name: formData.notfall_name || null,
+      emergency_contact_relation: formData.notfall_beziehung || null,
+      emergency_contact_phone: formData.notfall_mobile || null,
+      join_date: formData.eintrittsdatum,
+      orientation_staff: formData.ori_mitarbeiter || null,
+    };
+
+    // Output payload for review in browser developer tools (F12 / Console)
+    console.log("Ready for POST /api/v1/members:", memberPayload);
+
+    // Provide immediate positive feedback and reset wizard for next entry
     setSaveSuccess(true);
     setCurrentStep(1);
     setFormData(INITIAL_FORM_DATA);
@@ -187,11 +186,11 @@ export default function NewMemberPage({ onBackToHome }) {
     }, 4000);
   }
 
-  // Summary items for confirmation modal
   const confirmationItems = [
     {
       label: "Name",
-      value: `${formData.anrede ? formData.anrede + " " : ""}${formData.titel ? formData.titel + " " : ""}${formData.vorname} ${formData.nachname}`.trim(),
+      value:
+        `${formData.anrede ? formData.anrede + " " : ""}${formData.vorname} ${formData.nachname}`.trim(),
     },
     { label: "Geburtsdatum", value: formData.geburtsdatum || "-" },
     {
@@ -227,10 +226,8 @@ export default function NewMemberPage({ onBackToHome }) {
         </p>
       </header>
 
-      {/* Accessible visual step progress indicator */}
       <StepProgress steps={STEPS} currentStep={currentStep} />
 
-      {/* Success notification banner */}
       {saveSuccess && (
         <aside
           role="status"
@@ -252,7 +249,24 @@ export default function NewMemberPage({ onBackToHome }) {
         </aside>
       )}
 
-      {/* Main wizard form */}
+      {errorMessage && (
+        <aside
+          role="alert"
+          aria-live="assertive"
+          className="mb-4 p-3 bg-red-50 border border-red-200 text-red-800 text-xs rounded-md flex items-center justify-between"
+        >
+          <span>✕ {errorMessage}</span>
+          <button
+            type="button"
+            onClick={() => setErrorMessage("")}
+            className="text-red-700 hover:text-red-900 font-bold ml-2 text-sm cursor-pointer"
+            aria-label="Fehlermeldung schließen"
+          >
+            ✕
+          </button>
+        </aside>
+      )}
+
       <form onSubmit={handleNextStep} className="space-y-4">
         {/* Step 1: Personal Details */}
         {currentStep === 1 && (
@@ -261,14 +275,14 @@ export default function NewMemberPage({ onBackToHome }) {
               Persönliche Daten
             </legend>
 
-            <div className="grid grid-cols-4 gap-3">
-              {/* Salutation Dropdown (Anrede) */}
+            {/* 3-Spalten-Layout: Anrede/Titel, Vorname, Nachname */}
+            <div className="grid grid-cols-3 gap-3">
               <div className="flex flex-col gap-1">
                 <label
                   htmlFor="salutation"
                   className="text-sm font-semibold text-gray-800"
                 >
-                  Anrede
+                  Anrede / Titel
                 </label>
                 <select
                   id="salutation"
@@ -277,28 +291,6 @@ export default function NewMemberPage({ onBackToHome }) {
                   className="h-10 w-full rounded-md border border-gray-300 px-2 text-sm bg-white shadow-xs focus:ring-2 focus:ring-blue-500 focus:outline-none"
                 >
                   {SALUTATION_OPTIONS.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Academic Title Dropdown (Titel) */}
-              <div className="flex flex-col gap-1">
-                <label
-                  htmlFor="title"
-                  className="text-sm font-semibold text-gray-800"
-                >
-                  Titel
-                </label>
-                <select
-                  id="title"
-                  value={formData.titel}
-                  onChange={(e) => handleChange("titel", e.target.value)}
-                  className="h-10 w-full rounded-md border border-gray-300 px-2 text-sm bg-white shadow-xs focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                >
-                  {ACADEMIC_TITLE_OPTIONS.map((opt) => (
                     <option key={opt.value} value={opt.value}>
                       {opt.label}
                     </option>
@@ -440,7 +432,6 @@ export default function NewMemberPage({ onBackToHome }) {
               type="email"
               value={formData.email}
               onChange={(e) => {
-                // Strip spaces directly on input
                 const noSpaces = e.target.value.replace(/\s/g, "");
                 handleChange("email", noSpaces);
               }}
@@ -450,7 +441,6 @@ export default function NewMemberPage({ onBackToHome }) {
               spellCheck={false}
             />
 
-            {/* Collapsible Emergency Contact Section */}
             <Accordion title="Notfallkontakt">
               <div className="space-y-3 pt-2">
                 <InputField
@@ -528,13 +518,14 @@ export default function NewMemberPage({ onBackToHome }) {
           </fieldset>
         )}
 
-        {/* Bottom form navigation controls */}
+        {/* Action Controls */}
         <div className="flex justify-between items-center pt-4 border-t border-gray-100">
           {currentStep > 1 ? (
             <FormButton
               type="button"
               variant="secondary"
               onClick={handlePrevStep}
+              disabled={isSubmitting}
             >
               &lt; Zurück
             </FormButton>
@@ -543,18 +534,22 @@ export default function NewMemberPage({ onBackToHome }) {
               type="button"
               variant="secondary"
               onClick={onBackToHome}
+              disabled={isSubmitting}
             >
               Abbrechen
             </FormButton>
           )}
 
-          <FormButton type="submit" variant="dark">
-            {currentStep < 3 ? "Weiter >" : "Speichern"}
+          <FormButton type="submit" variant="dark" disabled={isSubmitting}>
+            {currentStep < 3
+              ? "Weiter >"
+              : isSubmitting
+                ? "Wird gespeichert..."
+                : "Speichern"}
           </FormButton>
         </div>
       </form>
 
-      {/* Verification modal before final submission */}
       <ConfirmationCard
         isOpen={showConfirmation}
         title="Angaben überprüfen"
