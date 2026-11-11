@@ -1,3 +1,11 @@
+/**
+ * ActionCard Component
+ * Accessible card-button for top-level dashboard navigation.
+ *
+ * @param {Object} props
+ * @param {string} props.label - Card title text displayed on the button
+ * @param {Function} props.onClick - Navigation callback fired on button click
+ */
 export default function ActionCard({ label, onClick }) {
   return (
     <li>
