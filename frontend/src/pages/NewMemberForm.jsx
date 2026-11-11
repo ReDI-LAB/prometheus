@@ -6,15 +6,16 @@ import Accordion from "../components/Accordion";
 import StepProgress from "../components/StepProgress";
 import FormButton from "../components/FormButton";
 import ConfirmationCard from "../components/ConfirmationCard";
-//import { createMember } from "../services/api";
+import { useMembers } from "../context/useMembers";
 
+// Step definitions for the multi-step registration wizard
 const STEPS = [
   { id: 1, label: "Persönliche Daten" },
   { id: 2, label: "Kontaktdaten" },
   { id: 3, label: "ClubHaus" },
 ];
 
-// Kombiniertes Dropdown für Anrede & Titel
+// Combined salutation and academic title dropdown options
 const SALUTATION_OPTIONS = [
   { value: "", label: "Auswählen..." },
   { value: "Herr", label: "Herr" },
@@ -25,12 +26,14 @@ const SALUTATION_OPTIONS = [
   { value: "Prof. Dr.", label: "Prof. Dr." },
 ];
 
+// Gender options mapped to standard backend enum values
 const GENDER_OPTIONS = [
   { value: "m", label: "Männlich" },
   { value: "w", label: "Weiblich" },
   { value: "d", label: "Divers" },
 ];
 
+// Predefined staff list for the orientation interview dropdown
 const STAFF_OPTIONS = [
   { value: "", label: "Mitarbeitenden auswählen..." },
   { value: "Mitarbeiter 1", label: "Mitarbeiter 1" },
@@ -38,8 +41,9 @@ const STAFF_OPTIONS = [
   { value: "Mitarbeiter 3", label: "Mitarbeiter 3" },
 ];
 
+// Initial form state matching database column requirements
 const INITIAL_FORM_DATA = {
-  // Step 1: Personal Details (anrede enthält Titel)
+  // Step 1: Personal Details
   anrede: "",
   vorname: "",
   nachname: "",
@@ -68,6 +72,12 @@ const INITIAL_FORM_DATA = {
   aktivitaetsstatus: "Aktiv",
 };
 
+/**
+ * Maps a 5-digit Munich postal code to its administrative sector.
+ *
+ * @param {string} plz - 5-digit German postal code
+ * @returns {string} Determined sector name in German
+ */
 function getSectorFromPlz(plz) {
   if (!plz || plz.length < 5) return "";
 
@@ -84,20 +94,42 @@ function getSectorFromPlz(plz) {
   return "München (Unbekannt)";
 }
 
+/**
+ * Validates basic email formatting: text@domain.tld.
+ *
+ * @param {string} email - Email address string to test
+ * @returns {boolean} True if valid or empty, false otherwise
+ */
 function isValidEmail(email) {
   if (!email) return true;
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
+/**
+ * NewMemberForm Component
+ * 3-step wizard for capturing member master data.
+ *
+ * @param {Object} props
+ * @param {Function} props.onBackToHome - Navigation callback returning to the dashboard
+ */
 export default function NewMemberForm({ onBackToHome }) {
+  const { addMember } = useMembers();
+
   const [currentStep, setCurrentStep] = useState(1);
   const [formData, setFormData] = useState(INITIAL_FORM_DATA);
 
-  const [isSubmitting] = useState(false);
+  // UI feedback states
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
+  /**
+   * Updates form field state and triggers sector recalculation when postal code has 5 digits.
+   *
+   * @param {string} field - Field property key
+   * @param {string} value - New value
+   */
   function handleChange(field, value) {
     setFormData((prev) => {
       const updated = { ...prev, [field]: value };
@@ -108,6 +140,11 @@ export default function NewMemberForm({ onBackToHome }) {
     });
   }
 
+  /**
+   * Validates mandatory inputs for the current step and advances the wizard.
+   *
+   * @param {React.FormEvent} e - Form submit event
+   */
   function handleNextStep(e) {
     e.preventDefault();
     setErrorMessage("");
@@ -141,49 +178,45 @@ export default function NewMemberForm({ onBackToHome }) {
     }
   }
 
+  /**
+   * Steps one step backward in the wizard flow.
+   */
   function handlePrevStep() {
     setErrorMessage("");
     setCurrentStep((prev) => Math.max(prev - 1, 1));
   }
 
-  // Handles final confirmation locally until backend POST /api/v1/members is delivered by Ai
+  /**
+   * Handles local save, registers simulated member into MemberContext, and resets the wizard.
+   */
   function handleFinalSave() {
     setShowConfirmation(false);
     setErrorMessage("");
+    setIsSubmitting(true);
 
-    // Prepare complete payload matching database & schema requirements
-    const memberPayload = {
-      anrede: formData.anrede || null,
+    // Generate local mock code and unique identifier for continuous client-side entry
+    const generatedCode = `${formData.nachname.slice(0, 4).toUpperCase()}01`;
+    const newMemberRecord = {
+      member_id: crypto.randomUUID ? crypto.randomUUID() : `temp-${Date.now()}`,
+      member_code: generatedCode,
       first_name: formData.vorname.trim(),
       last_name: formData.nachname.trim(),
-      date_of_birth: formData.geburtsdatum,
-      gender: formData.geschlecht,
-      street_house_number: formData.strasse_hausnummer || null,
-      postal_code: formData.postleitzahl || null,
-      city: formData.ort || null,
-      country: formData.land || null,
-      sector: formData.sektor || null,
-      mobile_phone: formData.mobile ? `+49${formData.mobile}` : null,
-      phone: formData.telefon || null,
-      email: formData.email || null,
-      emergency_contact_name: formData.notfall_name || null,
-      emergency_contact_relation: formData.notfall_beziehung || null,
-      emergency_contact_phone: formData.notfall_mobile || null,
-      join_date: formData.eintrittsdatum,
-      orientation_staff: formData.ori_mitarbeiter || null,
+      membership_status: "mo",
     };
 
-    // Output payload for review in browser developer tools (F12 / Console)
-    console.log("Ready for POST /api/v1/members:", memberPayload);
-
-    // Provide immediate positive feedback and reset wizard for next entry
-    setSaveSuccess(true);
-    setCurrentStep(1);
-    setFormData(INITIAL_FORM_DATA);
+    // Immediately push into central cache so BabPage and PhoneLogPage can select this member
+    addMember(newMemberRecord);
 
     setTimeout(() => {
-      setSaveSuccess(false);
-    }, 4000);
+      setIsSubmitting(false);
+      setSaveSuccess(true);
+      setCurrentStep(1);
+      setFormData(INITIAL_FORM_DATA);
+
+      setTimeout(() => {
+        setSaveSuccess(false);
+      }, 4000);
+    }, 500);
   }
 
   const confirmationItems = [
@@ -228,6 +261,7 @@ export default function NewMemberForm({ onBackToHome }) {
 
       <StepProgress steps={STEPS} currentStep={currentStep} />
 
+      {/* Success notification banner */}
       {saveSuccess && (
         <aside
           role="status"
@@ -249,6 +283,7 @@ export default function NewMemberForm({ onBackToHome }) {
         </aside>
       )}
 
+      {/* Error notification banner */}
       {errorMessage && (
         <aside
           role="alert"
@@ -275,7 +310,6 @@ export default function NewMemberForm({ onBackToHome }) {
               Persönliche Daten
             </legend>
 
-            {/* 3-Spalten-Layout: Anrede/Titel, Vorname, Nachname */}
             <div className="grid grid-cols-3 gap-3">
               <div className="flex flex-col gap-1">
                 <label
@@ -518,7 +552,7 @@ export default function NewMemberForm({ onBackToHome }) {
           </fieldset>
         )}
 
-        {/* Action Controls */}
+        {/* Action buttons */}
         <div className="flex justify-between items-center pt-4 border-t border-gray-100">
           {currentStep > 1 ? (
             <FormButton

@@ -1,11 +1,16 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import InputField from "../components/InputField";
 import MemberSearchSelect from "../components/MemberSearchSelect";
 import FormButton from "../components/FormButton";
 import ConfirmationCard from "../components/ConfirmationCard";
-import { createAttendance, fetchMembers } from "../services/api";
+import { createAttendance } from "../services/api";
+import { useMembers } from "../context/useMembers";
 
-// Helper: Calculate previous business day (Mon-Fri) synchronously
+/**
+ * Calculates previous business day (Monday through Friday) synchronously.
+ *
+ * @returns {string} Date formatted as YYYY-MM-DD
+ */
 function getPreviousBusinessDay() {
   const today = new Date();
   const day = today.getDay(); // 0 = Sunday, 1 = Monday
@@ -28,7 +33,7 @@ function getPreviousBusinessDay() {
  *
  * @param {string} arrival - "HH:MM"
  * @param {string} departure - "HH:MM"
- * @returns {string} Formatted duration string
+ * @returns {string} Formatted duration string in German units
  */
 function calculateDuration(arrival, departure) {
   if (!arrival || !departure) return "0 Std.";
@@ -37,7 +42,6 @@ function calculateDuration(arrival, departure) {
   const [dH, dM] = departure.split(":").map(Number);
 
   const diffMinutes = dH * 60 + dM - (aH * 60 + aM);
-
   if (diffMinutes <= 0) return "0 Std.";
 
   const hours = Math.floor(diffMinutes / 60);
@@ -52,65 +56,60 @@ function calculateDuration(arrival, departure) {
   return `${minutes} Min.`;
 }
 
+/**
+ * BabPage Component
+ * Form for daily attendance logging (BAB), connected to central MemberContext.
+ *
+ * @param {Object} props
+ * @param {Function} props.onBackToHome - Navigation callback returning to the dashboard
+ */
 export default function BabPage({ onBackToHome }) {
+  // Consume cached active members and loading state from central context
+  const { members, isLoading: isLoadingMembers } = useMembers();
+
   // --- Form Input States ---
   const [date, setDate] = useState(getPreviousBusinessDay);
   const [isEditingDate, setIsEditingDate] = useState(false);
   const [arrival, setArrival] = useState("09:00");
   const [departure, setDeparture] = useState("14:00");
   const [note, setNote] = useState("");
-
-  // Live member state fetched from FastAPI backend
-  const [members, setMembers] = useState([]);
-  const [isLoadingMembers, setIsLoadingMembers] = useState(true);
-
-  // Tracks selected member from MemberSearchSelect
   const [selectedMember, setSelectedMember] = useState(null);
 
-  // Derived state: Live total duration calculation
+  // Derived calculations: duration and status indicators
   const totalHours = calculateDuration(arrival, departure);
-
-  // Status badge derived from selected member or default placeholder
-  const statusBadge = selectedMember?.mitgliedsstatus
-    ? selectedMember.mitgliedsstatus.toUpperCase()
+  const statusBadge = selectedMember?.membership_status || selectedMember?.mitgliedsstatus
+    ? (selectedMember.membership_status || selectedMember.mitgliedsstatus).toUpperCase()
     : "MO";
   const attendanceMonthly = "9 / Monat"; // Placeholder attendance counter
 
-  // --- Modal & Feedback States ---
+  // --- UI Feedback & Submission States ---
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Fetch live members on component mount
-  useEffect(() => {
-    fetchMembers()
-      .then((data) => {
-        // Falls data ein Array ist direkt nehmen, sonst data.items auslesen:
-        const memberList = Array.isArray(data) ? data : data.items || [];
-        setMembers(memberList);
-        setIsLoadingMembers(false);
-      })
-      .catch((err) => {
-        console.error("Failed to load members:", err);
-        setIsLoadingMembers(false);
-      });
-  }, []);
-
-  // Format date display for German locale (e.g., "Montag, 01.09.2026")
+  /**
+   * Formats ISO date string into German localized date (e.g. "Montag, 01.09.2026").
+   *
+   * @param {string} dateString - "YYYY-MM-DD"
+   * @returns {string} Localized date string
+   */
   function formatDisplayDate(dateString) {
     if (!dateString) return "";
     const d = new Date(dateString);
-    const options = {
+    return d.toLocaleDateString("de-DE", {
       weekday: "long",
       day: "2-digit",
       month: "2-digit",
       year: "numeric",
-    };
-    return d.toLocaleDateString("de-DE", options);
+    });
   }
 
-  // Intercept submit event to validate and open verification modal
+  /**
+   * Validates input fields and triggers the verification modal.
+   *
+   * @param {React.FormEvent} e - Form submit event
+   */
   function handleFormSubmit(e) {
     e.preventDefault();
 
@@ -119,7 +118,7 @@ export default function BabPage({ onBackToHome }) {
       return;
     }
 
-    // Departure must be chronologically after arrival
+    // Departure time must strictly follow arrival time
     if (arrival && departure && departure <= arrival) {
       alert("Die Abgangszeit muss nach der Ankunftszeit liegen.");
       return;
@@ -128,14 +127,16 @@ export default function BabPage({ onBackToHome }) {
     setShowConfirmation(true);
   }
 
-  // Execute persistence call to FastAPI backend
+  /**
+   * Executes API persistence call to FastAPI endpoint POST /api/v1/attendance.
+   */
   async function handleFinalSave() {
     setShowConfirmation(false);
     setErrorMessage("");
     setIsSubmitting(true);
 
     try {
-      // Handles both backend UUID schema (member_id) and legacy mock schema (mitglied_id)
+      // Resolves both backend UUID schema (member_id) and legacy mock schema (mitglied_id)
       const memberId = selectedMember.member_id || selectedMember.mitglied_id;
 
       await createAttendance({
@@ -146,7 +147,8 @@ export default function BabPage({ onBackToHome }) {
       });
 
       setSaveSuccess(true);
-      // Reset member-specific fields for continuous batch entry
+
+      // Reset member-specific fields for paper-sheet batch entry; date remains intact
       setSelectedMember(null);
       setNote("");
 
@@ -160,26 +162,17 @@ export default function BabPage({ onBackToHome }) {
     }
   }
 
-  // Member display name helper supporting both camelCase and snake_case models
+  // Resolves member display name across snake_case and camelCase attributes
   const memberDisplayName = selectedMember
     ? `${selectedMember.first_name || selectedMember.vorname || ""} ${selectedMember.last_name || selectedMember.nachname || ""}`.trim()
     : "Kein Mitglied ausgewählt";
 
-  // Prepare key-value items for the confirmation card
+  // Key-value pairs for the verification modal
   const confirmationItems = [
     { label: "Datum", value: formatDisplayDate(date) },
-    {
-      label: "Name des Mitglieds",
-      value: memberDisplayName,
-    },
-    {
-      label: "Zeiten / Gesamtdauer",
-      value: `${arrival} – ${departure} (${totalHours})`,
-    },
-    {
-      label: "Status / Anwesenheit",
-      value: `${statusBadge} · ${attendanceMonthly}`,
-    },
+    { label: "Name des Mitglieds", value: memberDisplayName },
+    { label: "Zeiten / Gesamtdauer", value: `${arrival} – ${departure} (${totalHours})` },
+    { label: "Status / Anwesenheit", value: `${statusBadge} · ${attendanceMonthly}` },
   ];
 
   return (
@@ -196,7 +189,7 @@ export default function BabPage({ onBackToHome }) {
         </p>
       </header>
 
-      {/* Success banner */}
+      {/* Success notification banner */}
       {saveSuccess && (
         <aside
           role="status"
@@ -207,7 +200,7 @@ export default function BabPage({ onBackToHome }) {
         </aside>
       )}
 
-      {/* Error banner */}
+      {/* Error notification banner */}
       {errorMessage && (
         <aside
           role="alert"
@@ -226,7 +219,7 @@ export default function BabPage({ onBackToHome }) {
         </aside>
       )}
 
-      {/* Date row with semantic section and accessible edit button */}
+      {/* Date header section with interactive edit toggle */}
       <section
         aria-label="Datumsangabe"
         className="mb-5 pb-3 border-b border-gray-100"
@@ -264,9 +257,9 @@ export default function BabPage({ onBackToHome }) {
         )}
       </section>
 
-      {/* Semantic Form */}
+      {/* Semantic input form */}
       <form onSubmit={handleFormSubmit} className="space-y-4">
-        {/* Row 1: Searchable Member Selection */}
+        {/* Row 1: Searchable member combobox */}
         <MemberSearchSelect
           id="member-search"
           label="Mitglied"
@@ -281,7 +274,7 @@ export default function BabPage({ onBackToHome }) {
           required
         />
 
-        {/* Row 2: Arrival & Departure grouped in a fieldset */}
+        {/* Row 2: Arrival and Departure grouped in a semantic fieldset */}
         <fieldset className="grid grid-cols-2 gap-3 border-0 p-0 mb-4">
           <legend className="sr-only">Anwesenheitszeiten</legend>
 
@@ -319,7 +312,7 @@ export default function BabPage({ onBackToHome }) {
           </p>
         )}
 
-        {/* Row 3: Semantic Output for calculated hours and metadata */}
+        {/* Row 3: Semantic output elements for live calculated hours and status */}
         <dl className="space-y-1.5 pt-1 text-sm" aria-live="polite">
           <div className="flex items-baseline gap-1 font-semibold text-gray-900">
             <dt>Gesamtdauer:</dt>
@@ -342,7 +335,7 @@ export default function BabPage({ onBackToHome }) {
           </div>
         </dl>
 
-        {/* Row 4: Optional notes */}
+        {/* Row 4: Optional notes textarea */}
         <div className="flex flex-col gap-1 w-full mt-4">
           <label
             htmlFor="bab-note"
@@ -377,7 +370,7 @@ export default function BabPage({ onBackToHome }) {
         </div>
       </form>
 
-      {/* Confirmation Modal */}
+      {/* Verification modal card before final persistence */}
       <ConfirmationCard
         isOpen={showConfirmation}
         title="Daten überprüfen"

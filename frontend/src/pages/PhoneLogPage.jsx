@@ -1,15 +1,17 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import InputField from '../components/InputField';
 import MemberSearchSelect from '../components/MemberSearchSelect';
 import SelectDropdown from '../components/SelectDropdown';
 import TextareaField from '../components/TextareaField';
 import FormButton from '../components/FormButton';
 import ConfirmationCard from '../components/ConfirmationCard';
-import { fetchMembers, createPhoneCall } from '../services/api';
+import { createPhoneCall } from '../services/api';
+import { useMembers } from '../context/useMembers';
 
 /**
- * Calculates previous business day (Mon-Fri) synchronously.
- * @returns {string} YYYY-MM-DD
+ * Calculates previous business day (Monday through Friday) synchronously.
+ *
+ * @returns {string} Date formatted as YYYY-MM-DD
  */
 function getPreviousBusinessDay() {
   const today = new Date();
@@ -23,7 +25,7 @@ function getPreviousBusinessDay() {
   return lastWorkday.toISOString().split('T')[0];
 }
 
-// Standardized categories (1-5) matching backend topic_code
+// Predefined call reason categories (1-5) matching backend topic_code
 const CALL_REASONS = [
   { value: '1', label: '1 · Schichtanmeldung' },
   { value: '2', label: '2 · Clubhaus-Angelegenheiten' },
@@ -38,53 +40,38 @@ const CALLER_OPTIONS = [
   { value: 'staff', label: 'Mitarbeiter' },
 ];
 
+/**
+ * PhoneLogPage Component
+ * Form for logging phone calls, connected to central MemberContext and FastAPI backend.
+ *
+ * @param {Object} props
+ * @param {Function} props.onBackToHome - Navigation callback returning to the dashboard
+ */
 export default function PhoneLogPage({ onBackToHome }) {
+  // Consume cached active members and loading state from central context
+  const { members, isLoading: isLoadingMembers } = useMembers();
+
   // --- Form Input States ---
   const [date, setDate] = useState(getPreviousBusinessDay);
   const [isEditingDate, setIsEditingDate] = useState(false);
-  const [members, setMembers] = useState([]);
   const [selectedMember, setSelectedMember] = useState(null);
   const [caller, setCaller] = useState('member');
   const [duration, setDuration] = useState('');
   const [reason, setReason] = useState('');
   const [note, setNote] = useState('');
 
-  // --- UI & Network Feedback States ---
-  const [isLoadingMembers, setIsLoadingMembers] = useState(true);
+  // --- UI Feedback & Network States ---
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
-  // Fetch live active members on mount
-  useEffect(() => {
-    let isMounted = true;
-
-    async function loadMembers() {
-      try {
-        setIsLoadingMembers(true);
-        const data = await fetchMembers();
-        if (isMounted) {
-          setMembers(data);
-        }
-      } catch (err) {
-        if (isMounted) {
-          setErrorMessage(err.message || 'Mitgliederliste konnte nicht geladen werden.');
-        }
-      } finally {
-        if (isMounted) {
-          setIsLoadingMembers(false);
-        }
-      }
-    }
-
-    loadMembers();
-    return () => {
-      isMounted = false;
-    };
-  }, []);
-
-  // Format date display for German locale (e.g. "Montag, 01.09.2026")
+  /**
+   * Formats ISO date string into German localized date (e.g. "Montag, 01.09.2026").
+   *
+   * @param {string} dateString - "YYYY-MM-DD"
+   * @returns {string} Localized date string
+   */
   function formatDisplayDate(dateString) {
     if (!dateString) return '';
     const d = new Date(dateString);
@@ -96,9 +83,14 @@ export default function PhoneLogPage({ onBackToHome }) {
     });
   }
 
-  // Form submission: open confirmation card
+  /**
+   * Validates form input fields before opening the confirmation modal.
+   *
+   * @param {React.FormEvent} e - Form submit event
+   */
   function handleFormSubmit(e) {
     e.preventDefault();
+
     if (!selectedMember) {
       alert('Bitte wählen Sie ein Mitglied aus.');
       return;
@@ -110,7 +102,9 @@ export default function PhoneLogPage({ onBackToHome }) {
     setShowConfirmation(true);
   }
 
-  // Final persistence call to FastAPI endpoint POST /api/v1/phone-calls
+  /**
+   * Executes API persistence call to FastAPI endpoint POST /api/v1/phone-calls.
+   */
   async function handleFinalSave() {
     setShowConfirmation(false);
     setErrorMessage('');
@@ -118,7 +112,7 @@ export default function PhoneLogPage({ onBackToHome }) {
 
     try {
       await createPhoneCall({
-        person_id: selectedMember.member_id, // backend UUID identifier
+        person_id: selectedMember.member_id,
         person_type: caller,
         call_date: date,
         duration_minutes: duration,
@@ -128,7 +122,7 @@ export default function PhoneLogPage({ onBackToHome }) {
 
       setSaveSuccess(true);
 
-      // Reset member-specific fields for efficient batch entry, preserving date
+      // Reset member fields for paper batch entry; preserve date
       setSelectedMember(null);
       setDuration('');
       setReason('');
@@ -177,7 +171,7 @@ export default function PhoneLogPage({ onBackToHome }) {
         </p>
       </header>
 
-      {/* Success Notification */}
+      {/* Success notification banner */}
       {saveSuccess && (
         <aside
           role="status"
@@ -188,7 +182,7 @@ export default function PhoneLogPage({ onBackToHome }) {
         </aside>
       )}
 
-      {/* Error Notification */}
+      {/* Error notification banner */}
       {errorMessage && (
         <aside
           role="alert"
@@ -207,7 +201,7 @@ export default function PhoneLogPage({ onBackToHome }) {
         </aside>
       )}
 
-      {/* Date Header with Edit Toggle */}
+      {/* Date header section with interactive edit toggle */}
       <section aria-label="Datumsangabe" className="mb-5 pb-3 border-b border-gray-100">
         <div className="flex items-center gap-2">
           <span className="text-sm font-semibold text-gray-800">
@@ -242,9 +236,9 @@ export default function PhoneLogPage({ onBackToHome }) {
         )}
       </section>
 
-      {/* Semantic Form */}
+      {/* Semantic input form */}
       <form onSubmit={handleFormSubmit} className="space-y-4">
-        {/* Row 1: Searchable Member Combobox */}
+        {/* Row 1: Searchable member combobox */}
         <MemberSearchSelect
           id="member-search"
           label="Mitglied"
@@ -280,7 +274,7 @@ export default function PhoneLogPage({ onBackToHome }) {
           />
         </fieldset>
 
-        {/* Row 3: Reason Categories */}
+        {/* Row 3: Call reason category */}
         <SelectDropdown
           id="call-reason"
           label="Grund des Anrufs"
@@ -291,7 +285,7 @@ export default function PhoneLogPage({ onBackToHome }) {
           required
         />
 
-        {/* Row 4: Optional Freeform Note */}
+        {/* Row 4: Optional note */}
         <TextareaField
           id="note"
           label="Notiz (optional)"
@@ -301,7 +295,7 @@ export default function PhoneLogPage({ onBackToHome }) {
           onChange={(e) => setNote(e.target.value)}
         />
 
-        {/* Row 5: Action Controls */}
+        {/* Row 5: Action buttons */}
         <div className="flex justify-end gap-3 pt-3">
           <FormButton variant="secondary" onClick={onBackToHome}>
             Abbrechen
@@ -312,7 +306,7 @@ export default function PhoneLogPage({ onBackToHome }) {
         </div>
       </form>
 
-      {/* Verification Modal */}
+      {/* Verification modal card before final persistence */}
       <ConfirmationCard
         isOpen={showConfirmation}
         title="Angaben überprüfen"
