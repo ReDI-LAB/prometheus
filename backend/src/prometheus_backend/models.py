@@ -204,7 +204,10 @@ class Member(Base):
     # a_prepare_members trigger) rejects a non-NULL value on INSERT and
     # blocks changing it on UPDATE outside that procedure, the same
     # immutability guard as member_code.
-    anonymized_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True))
+    # server_default=FetchedValue() keeps it out of INSERT statements.
+    anonymized_at: Mapped[datetime | None] = mapped_column(
+        sa.DateTime(timezone=True), server_default=sa.FetchedValue()
+    )
     # Recomputed on every INSERT/UPDATE by refresh_member_on_write() (the
     # b_refresh_member trigger) from join_date: false through day 42 (MO),
     # true from day 43 (M). Any client-supplied value is ignored on INSERT

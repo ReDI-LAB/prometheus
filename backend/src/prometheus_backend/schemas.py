@@ -1,8 +1,17 @@
 import uuid
 from datetime import date, datetime, time
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    BeforeValidator,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    field_validator,
+    model_validator,
+)
 
 
 class PhoneCallCreate(BaseModel):
@@ -92,3 +101,63 @@ class MemberPage(BaseModel):
     total: int
     limit: int
     offset: int
+
+
+def _reject_nul(value: str) -> str:
+    # The database cannot store NUL characters in text columns.
+    if "\x00" in value:
+        raise ValueError("must not contain NUL characters")
+    return value
+
+
+def _optional_text(max_length: int) -> BeforeValidator:
+    """Trim a string, turn blank into None, and enforce a maximum length."""
+
+    def clean(value: object) -> object:
+        if not isinstance(value, str):
+            return value
+        value = _reject_nul(value).strip()
+        if len(value) > max_length:
+            raise ValueError(f"must be at most {max_length} characters")
+        return value or None
+
+    return BeforeValidator(clean)
+
+
+def _required_text(max_length: int) -> tuple[object, ...]:
+    return (
+        StringConstraints(strip_whitespace=True, min_length=1, max_length=max_length),
+        AfterValidator(_reject_nul),
+    )
+
+
+class EmergencyContactCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: Annotated[str, *_required_text(200)]
+    phone: Annotated[str, *_required_text(50)]
+    # Validated against contact_relationships by the database.
+    relationship: Annotated[str | None, _optional_text(50)] = None
+
+
+class MemberCreate(BaseModel):
+    # Generated or database-managed columns (member_code, is_member, is_active,
+    # anonymized_at, leave_date, timestamps) are rejected rather than ignored.
+    model_config = ConfigDict(extra="forbid")
+
+    first_name: Annotated[str, *_required_text(100)]
+    last_name: Annotated[str, *_required_text(100)]
+    date_of_birth: date
+    join_date: date
+    # salutation, gender and country are validated against their lookup
+    # tables by the database.
+    salutation: Annotated[str | None, _optional_text(50)] = None
+    gender: Annotated[str | None, _optional_text(50)] = None
+    phone: Annotated[str | None, _optional_text(50)] = None
+    email: Annotated[str | None, _optional_text(254)] = None
+    street_address: Annotated[str | None, _optional_text(200)] = None
+    postal_code: Annotated[str | None, _optional_text(20)] = None
+    city: Annotated[str | None, _optional_text(100)] = None
+    country: Annotated[str | None, _optional_text(50)] = None
+    clubhouse_id: uuid.UUID | None = None
+    emergency_contact: EmergencyContactCreate | None = None

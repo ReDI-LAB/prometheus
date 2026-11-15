@@ -134,7 +134,10 @@ Local URLs:
 | GET    | `/api/v1/phone-calls` | List phone calls, filterable by person and date range       |
 | POST   | `/api/v1/attendance`  | Log a member's attendance (time in, optional time out)      |
 | GET    | `/api/v1/attendance`  | List attendance entries, filterable by member and date range |
+| POST   | `/api/v1/members`     | Create a member, optionally with one emergency contact |
 | GET    | `/api/v1/members`     | List members for a selector, with search, `is_active` filter and paging |
+
+`POST /api/v1/members` takes `first_name`, `last_name`, `date_of_birth` and `join_date` (required) and the optional `salutation`, `gender`, `phone`, `email`, `street_address`, `postal_code`, `city`, `country` and `clubhouse_id`. An optional `emergency_contact` object (`name`, `phone`, optional `relationship`) is stored in the same transaction, so a failure rolls back the member too. `salutation`, `gender`, `country` and `relationship` are lookup codes that the database validates. If `clubhouse_id` is omitted, the only existing clubhouse is used (`409` if none exists, `422` if there are several). Unknown fields are rejected with `422`. The response is `201` with the member as in the list below, including the generated `member_code`; `member_code`, `is_member` and `is_active` are set by the database and cannot be sent.
 
 `GET /api/v1/members` reads the `members_current` view. `search` (up to 100 characters) matches every word, case-insensitively, against first name, last name or member code; by default only current members are returned (`include_left=true` also includes members who have left, never anonymized ones), and `is_active` (`true` or `false`) filters by activity.
 
