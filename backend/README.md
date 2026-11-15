@@ -12,11 +12,11 @@ Python FastAPI backend for Project Prometheus.
 
 ### Database
 
-The schema script lives on the `data_architecture` branch, not on this one. Fetch it and save it outside the repository:
+The schema script (version 2) lives on the `data_architecture` branch, not on this one. Fetch it and save it outside the repository:
 
 ```sh
 git fetch origin
-git show origin/data_architecture:data_architecture/prometheus-redi-schema.sql > ~/prometheus-redi-schema.sql
+git show origin/data_architecture:data_architecture/prometheus_redi_schema_V2.sql > ~/prometheus_redi_schema_V2.sql
 ```
 
 Start a PostgreSQL 17 container for it. The script itself requires an empty database named exactly `prometheus_redi` on PostgreSQL 17+, and refuses to run otherwise:
@@ -35,10 +35,22 @@ Wait until the container is ready, then run the script against it. The readiness
 
 ```sh
 until docker exec prometheus-redi-db pg_isready -h 127.0.0.1 -U postgres -d prometheus_redi; do sleep 1; done
-cat ~/prometheus-redi-schema.sql | docker exec -i prometheus-redi-db psql -U postgres -d prometheus_redi -v ON_ERROR_STOP=1
+cat ~/prometheus_redi_schema_V2.sql | docker exec -i prometheus-redi-db psql -U postgres -d prometheus_redi -v ON_ERROR_STOP=1
 ```
 
-A successful run ends with the line `Redi installation complete`. Never run this script against a database that already has data in it — it only installs into a genuinely empty database. The backend itself never creates or changes tables; all schema changes come from this script.
+A successful run ends with the line `Prometheus Redi V2 installation complete`. Never run this script against a database that already has data in it — it only installs into a genuinely empty database. The backend itself never creates or changes tables; all schema changes come from this script.
+
+#### Verify the installation (optional)
+
+The `data_architecture` branch also contains two check files. They verify an installation that already exists; never use them to install the schema. Both must run in full, against the `prometheus_redi` database:
+
+- `prometheus_redi_healthcheck_V2.sql` is a read-only check (it runs in a read-only transaction) that prints the installed columns, table and partition counts and the lookup values.
+- `prometheus_redi_schema_tests_V2.sql` is a regression test suite. It uses synthetic rows and runs inside a transaction that ends with `ROLLBACK`, so it leaves no data behind. If it fails, execute `ROLLBACK;` before trying again.
+
+```sh
+git show origin/data_architecture:data_architecture/prometheus_redi_healthcheck_V2.sql | docker exec -i prometheus-redi-db psql -v ON_ERROR_STOP=1 -U postgres -d prometheus_redi
+git show origin/data_architecture:data_architecture/prometheus_redi_schema_tests_V2.sql | docker exec -i prometheus-redi-db psql -v ON_ERROR_STOP=1 -U postgres -d prometheus_redi
+```
 
 ### Test data
 
@@ -122,9 +134,14 @@ Local URLs:
 | GET    | `/api/v1/phone-calls` | List phone calls, filterable by person and date range       |
 | POST   | `/api/v1/attendance`  | Log a member's attendance (time in, optional time out)      |
 | GET    | `/api/v1/attendance`  | List attendance entries, filterable by member and date range |
-| GET    | `/api/v1/members`     | List members for a selector, with search, status filter and paging |
+| GET    | `/api/v1/members`     | List members for a selector, with search, `is_active` filter and paging |
 
-`GET /api/v1/members` reads the `members_current` view. `search` (up to 100 characters) matches every word, case-insensitively, against first name, last name or member code; by default only current members are returned (`include_left=true` also includes members who have left, never anonymized ones), and `activity_status` filters by exact value.
+`GET /api/v1/members` reads the `members_current` view. `search` (up to 100 characters) matches every word, case-insensitively, against first name, last name or member code; by default only current members are returned (`include_left=true` also includes members who have left, never anonymized ones), and `is_active` (`true` or `false`) filters by activity.
+
+Each member item contains `member_id`, `member_code`, `first_name`, `last_name`, `is_member` and `is_active`:
+
+- `is_member` is `false` for newcomers and `true` from day 43 after the join date.
+- `is_active` is `true` up to 90 days after the last visit and `false` afterwards. It is `null` until the member's first visit, which the frontend should treat as unknown. Members with a `null` value match neither `is_active=true` nor `is_active=false`, so a member selector should not filter on `is_active`.
 
 Main status codes: `201` on successful creation, `422` for invalid or unknown data (bad values, a foreign key that doesn't exist), `503` when the database is unavailable or a monthly partition is missing for the given date.
 
@@ -156,7 +173,7 @@ Notes:
 - There is no authentication yet.
 - The `GET` date filters default to the last 90 days and are limited to a 366-day range.
 - `person_id` on `/api/v1/phone-calls` requires `person_type` to be given as well.
-- A successful attendance entry changes the member's activity status in the database.
+- A successful attendance entry updates the member's `is_active` value in the database.
 
 ### Troubleshooting
 
