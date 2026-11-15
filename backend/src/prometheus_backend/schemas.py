@@ -82,8 +82,9 @@ class MemberSummary(BaseModel):
     # Nullable because the database clears names when a member is anonymized.
     first_name: str | None
     last_name: str | None
-    membership_status: str
-    activity_status: str | None
+    is_member: bool
+    # NULL before the member's first attendance entry.
+    is_active: bool | None
 
 
 class MemberPage(BaseModel):

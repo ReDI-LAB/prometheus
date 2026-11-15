@@ -30,14 +30,6 @@ class Gender(CodeLookupMixin, Base):
     __tablename__ = "genders"
 
 
-class ActivityStatus(CodeLookupMixin, Base):
-    __tablename__ = "activity_statuses"
-
-
-class MembershipStatus(CodeLookupMixin, Base):
-    __tablename__ = "membership_statuses"
-
-
 class ContactRelationship(CodeLookupMixin, Base):
     __tablename__ = "contact_relationships"
 
@@ -52,10 +44,6 @@ class CashTransactionType(CodeLookupMixin, Base):
 
 class Currency(CodeLookupMixin, Base):
     __tablename__ = "currencies"
-
-
-class ClubhouseStatus(CodeLookupMixin, Base):
-    __tablename__ = "clubhouse_statuses"
 
 
 class Country(CodeLookupMixin, Base):
@@ -97,11 +85,7 @@ class Clubhouse(Base):
     primary_language: Mapped[str | None] = mapped_column(
         sa.ForeignKey("languages.code", ondelete="RESTRICT", onupdate="NO ACTION"), index=True
     )
-    clubhouse_status: Mapped[str] = mapped_column(
-        sa.ForeignKey("clubhouse_statuses.code", ondelete="RESTRICT", onupdate="NO ACTION"),
-        server_default="active",
-        index=True,
-    )
+    is_active: Mapped[bool] = mapped_column(sa.Boolean, server_default=sa.true())
     created_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True), server_default=sa.func.now()
     )
@@ -175,8 +159,8 @@ class Member(Base):
     """One row per clubhouse member.
 
     Application reads should eventually go through the members_current view
-    instead of this table directly: membership_status and activity_status
-    below are a cache that is only refreshed on write (or by the optional
+    instead of this table directly: is_member and is_active below are a
+    cache that is only refreshed on write (or by the optional
     refresh_member_status_cache() procedure), so they can be stale relative
     to the current local date. The view itself is not mapped in this step.
 
@@ -222,14 +206,10 @@ class Member(Base):
     # immutability guard as member_code.
     anonymized_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True))
     # Recomputed on every INSERT/UPDATE by refresh_member_on_write() (the
-    # b_refresh_member trigger) from join_date; any client-supplied value is
-    # ignored on INSERT and rejected on UPDATE unless it matches. No
-    # explicit index in the SQL; left to the schema's dynamic ix_fk_*
-    # maintenance pass, same as Staff.staff_status.
-    membership_status: Mapped[str] = mapped_column(
-        sa.ForeignKey("membership_statuses.code", ondelete="RESTRICT", onupdate="NO ACTION"),
-        server_default=sa.FetchedValue(),
-    )
+    # b_refresh_member trigger) from join_date: false through day 42 (MO),
+    # true from day 43 (M). Any client-supplied value is ignored on INSERT
+    # and rejected on UPDATE unless it matches. No explicit index in the SQL.
+    is_member: Mapped[bool] = mapped_column(sa.Boolean, server_default=sa.FetchedValue())
     salutation: Mapped[str | None] = mapped_column(
         sa.ForeignKey("salutations.code", ondelete="RESTRICT", onupdate="NO ACTION")
     )
@@ -244,12 +224,10 @@ class Member(Base):
     country: Mapped[str | None] = mapped_column(
         sa.ForeignKey("countries.code", ondelete="RESTRICT", onupdate="NO ACTION")
     )
-    # Same refresh_member_on_write() trigger as membership_status; NULL until
-    # the member's first attendance entry. No explicit index, same as above.
-    activity_status: Mapped[str | None] = mapped_column(
-        sa.ForeignKey("activity_statuses.code", ondelete="RESTRICT", onupdate="NO ACTION"),
-        server_default=sa.FetchedValue(),
-    )
+    # Same refresh_member_on_write() trigger as is_member; NULL until the
+    # member's first attendance entry, then true through day 90 after the
+    # last visit and false from day 91. No explicit index, same as above.
+    is_active: Mapped[bool | None] = mapped_column(sa.Boolean, server_default=sa.FetchedValue())
     # Reset to its prior value on every UPDATE by touch_updated_at() (the
     # z_touch_members trigger), so it is effectively immutable after creation.
     created_at: Mapped[datetime] = mapped_column(
@@ -273,8 +251,8 @@ class Attendance(Base):
     statement-level triggers on this table), which issues an
     UPDATE members SET updated_at = clock_timestamp() for each affected
     member. That UPDATE in turn re-fires every BEFORE UPDATE trigger on
-    members, including b_refresh_member, so Member.membership_status and
-    Member.activity_status get recomputed as a side effect of writing
+    members, including b_refresh_member, so Member.is_member and
+    Member.is_active get recomputed as a side effect of writing
     attendance, not just Member.updated_at.
 
     This table is PARTITION BY RANGE (attendance_date) in the database; the

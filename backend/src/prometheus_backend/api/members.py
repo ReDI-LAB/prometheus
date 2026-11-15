@@ -26,7 +26,10 @@ def _escape_like(value: str) -> str:
 async def list_members(
     session: SessionDep,
     search: Annotated[str | None, Query(max_length=MAX_SEARCH_LENGTH)] = None,
-    activity_status: str | None = None,
+    is_active: Annotated[
+        bool | None,
+        Query(description="Filter on is_active. Omit to include members with no visit yet."),
+    ] = None,
     include_left: bool = False,
     limit: Annotated[int, Query(ge=1, le=MAX_PAGE_SIZE)] = DEFAULT_PAGE_SIZE,
     offset: Annotated[int, Query(ge=0)] = 0,
@@ -37,8 +40,8 @@ async def list_members(
     else:
         filters = [MemberCurrent.is_current.is_(True)]
 
-    if activity_status is not None:
-        filters.append(MemberCurrent.activity_status == activity_status)
+    if is_active is not None:
+        filters.append(MemberCurrent.is_active.is_(is_active))
 
     # Every word must match at least one of name or member code.
     for word in (search or "").split():
