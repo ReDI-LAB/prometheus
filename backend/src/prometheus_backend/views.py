@@ -18,11 +18,11 @@ class MemberCurrent(ViewBase):
     """Read-only mapping of the members_current view.
 
     Application reads of a member's status should go through this view
-    instead of the members table: membership_status and activity_status
-    here are computed live for the current date in the member's clubhouse
-    timezone, while Member.membership_status/Member.activity_status are
-    only a write-time cache that can be stale after midnight. This class
-    is read-only — nothing should INSERT/UPDATE/DELETE through it.
+    instead of the members table: is_member and is_active here are
+    computed live for the current date in the member's clubhouse timezone,
+    while Member.is_member/Member.is_active are only a write-time cache
+    that can be stale after midnight. This class is read-only — nothing
+    should INSERT/UPDATE/DELETE through it.
     """
 
     __tablename__ = "members_current"
@@ -46,7 +46,8 @@ class MemberCurrent(ViewBase):
     is_current: Mapped[bool] = mapped_column(sa.Boolean)
     # membership_status_on() is STRICT on non-null inputs (join_date and the
     # computed local date are always present), so this is never NULL.
-    membership_status: Mapped[str] = mapped_column(sa.Text)
+    # false = observation period (MO), true = full member (M).
+    is_member: Mapped[bool] = mapped_column(sa.Boolean)
     salutation: Mapped[str | None] = mapped_column(sa.Text)
     gender: Mapped[str | None] = mapped_column(sa.Text)
     phone: Mapped[str | None] = mapped_column(sa.Text)
@@ -57,7 +58,7 @@ class MemberCurrent(ViewBase):
     country: Mapped[str | None] = mapped_column(sa.Text)
     # activity_status_on() returns NULL when there is no last_visit_date,
     # i.e. before the member's first attendance entry.
-    activity_status: Mapped[str | None] = mapped_column(sa.Text)
+    is_active: Mapped[bool | None] = mapped_column(sa.Boolean)
     created_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
     # max(attendance.attendance_date) up to status_as_of; NULL if the member
