@@ -34,6 +34,7 @@ _FOREIGN_KEY_MESSAGES = {
     "fk_members_salutation": "Unknown salutation",
     "fk_members_gender": "Unknown gender",
     "fk_members_country": "Unknown country",
+    "fk_members_postal_code": "Unknown postal_code",
     "fk_emergency_contacts_relationship": "Unknown emergency_contact.relationship",
 }
 
@@ -48,7 +49,9 @@ def _map_integrity_error(exc: IntegrityError) -> tuple[int, str]:
     if sqlstate == FOREIGN_KEY_VIOLATION:
         # The member trigger raises this without a constraint name when the
         # clubhouse does not exist, before the foreign key itself is checked.
-        return 422, _FOREIGN_KEY_MESSAGES.get(constraint_name, "Unknown clubhouse_id")
+        if constraint_name is None:
+            return 422, "Unknown clubhouse_id"
+        return 422, _FOREIGN_KEY_MESSAGES.get(constraint_name, "Invalid reference")
     if sqlstate == UNIQUE_VIOLATION:
         return 409, "Member already exists"
     if sqlstate == CHECK_VIOLATION and constraint_name is None:
