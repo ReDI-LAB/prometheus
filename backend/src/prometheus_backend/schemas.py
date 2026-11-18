@@ -94,6 +94,8 @@ class MemberSummary(BaseModel):
     is_member: bool
     # NULL before the member's first attendance entry.
     is_active: bool | None
+    # Derived by the database from the member's postal code; NULL without one.
+    sector: str | None
 
 
 class MemberPage(BaseModel):
@@ -179,8 +181,21 @@ class CallTopicItem(BaseModel):
     sort_order: int
 
 
+class SectorItem(BaseModel):
+    """A postal code and its sector. Unlike the other lookups there is no code/label pair:
+    the postal_code is the value to send as a member's postal_code."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    postal_code: str
+    sector: str
+    city: str
+    country: str
+
+
 class LookupsRead(BaseModel):
-    """All lookup lists, each ordered by sort_order and then code."""
+    """All lookup lists. The code/label lists are ordered by sort_order and then code;
+    sectors has a different shape and is ordered by postal_code."""
 
     salutations: list[LookupItem]
     genders: list[LookupItem]
@@ -188,6 +203,7 @@ class LookupsRead(BaseModel):
     contact_relationships: list[LookupItem]
     caller_types: list[LookupItem]
     call_topics: list[CallTopicItem]
+    sectors: list[SectorItem]
 
 
 class ClubhouseRead(BaseModel):

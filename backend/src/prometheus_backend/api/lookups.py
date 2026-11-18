@@ -9,8 +9,9 @@ from prometheus_backend.models import (
     Country,
     Gender,
     Salutation,
+    Sector,
 )
-from prometheus_backend.schemas import CallTopicItem, LookupItem, LookupsRead
+from prometheus_backend.schemas import CallTopicItem, LookupItem, LookupsRead, SectorItem
 
 router = APIRouter(prefix="/api/v1/lookups", tags=["lookups"])
 
@@ -18,11 +19,14 @@ router = APIRouter(prefix="/api/v1/lookups", tags=["lookups"])
 @router.get("", summary="List all lookup values")
 async def list_lookups(session: SessionDep) -> LookupsRead:
     """The codes used by the create endpoints (salutation, gender, country, relationship,
-    person_type, topic_code). The lists are small, so they are not paginated."""
+    person_type, topic_code) and the postal codes with their sectors. The lists are small,
+    so they are not paginated."""
 
     async def load(model: type) -> list:
         result = await session.scalars(select(model).order_by(model.sort_order, model.code))
         return result.all()
+
+    sectors = await session.scalars(select(Sector).order_by(Sector.postal_code))
 
     return LookupsRead(
         salutations=[LookupItem.model_validate(row) for row in await load(Salutation)],
@@ -33,4 +37,5 @@ async def list_lookups(session: SessionDep) -> LookupsRead:
         ],
         caller_types=[LookupItem.model_validate(row) for row in await load(CallerType)],
         call_topics=[CallTopicItem.model_validate(row) for row in await load(CallTopic)],
+        sectors=[SectorItem.model_validate(row) for row in sectors.all()],
     )
