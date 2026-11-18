@@ -6,6 +6,8 @@ import Accordion from "../components/Accordion";
 import StepProgress from "../components/StepProgress";
 import FormButton from "../components/FormButton";
 import ConfirmationCard from "../components/ConfirmationCard";
+import SelectDropdown from "../components/SelectDropdown";
+import { createMember } from "../services/api";
 import { useMembers } from "../context/useMembers";
 
 // Step definitions for the multi-step registration wizard
@@ -15,27 +17,50 @@ const STEPS = [
   { id: 3, label: "ClubHaus" },
 ];
 
-// Combined salutation and academic title dropdown options
+// Salutation options mapped to V2 database lookup codes
 const SALUTATION_OPTIONS = [
-  { value: "", label: "Auswählen..." },
-  { value: "Herr", label: "Herr" },
-  { value: "Frau", label: "Frau" },
-  { value: "Divers", label: "Divers" },
-  { value: "Dr.", label: "Dr." },
-  { value: "Prof.", label: "Prof." },
-  { value: "Prof. Dr.", label: "Prof. Dr." },
+  { value: "ms", label: "Frau" },
+  { value: "mr", label: "Herr" },
+  { value: "unspecified", label: "Keine Angabe" },
 ];
 
-// Gender options mapped to standard backend enum values
+// Gender options mapped to V2 database lookup codes
 const GENDER_OPTIONS = [
-  { value: "m", label: "Männlich" },
-  { value: "w", label: "Weiblich" },
-  { value: "d", label: "Divers" },
+  { value: "female", label: "Weiblich" },
+  { value: "male", label: "Männlich" },
+  { value: "diverse", label: "Divers" },
+  { value: "unspecified", label: "Keine Angabe" },
+];
+
+// Country ISO codes accepted by public.countries foreign key
+const COUNTRY_OPTIONS = [
+  { value: "DE", label: "Deutschland" },
+  { value: "AT", label: "Österreich" },
+  { value: "CH", label: "Schweiz" },
+  { value: "IT", label: "Italien" },
+  { value: "FR", label: "Frankreich" },
+  { value: "ES", label: "Spanien" },
+  { value: "NL", label: "Niederlande" },
+  { value: "GB", label: "Großbritannien" },
+  { value: "NO", label: "Norwegen" },
+  { value: "GI", label: "Gibraltar" },
+];
+
+// Relationship codes accepted by public.contact_relationships foreign key
+const RELATIONSHIP_OPTIONS = [
+  { value: "mother", label: "Mutter" },
+  { value: "father", label: "Vater" },
+  { value: "wife", label: "Ehefrau" },
+  { value: "husband", label: "Ehemann" },
+  { value: "daughter", label: "Tochter" },
+  { value: "son", label: "Sohn" },
+  { value: "sister", label: "Schwester" },
+  { value: "brother", label: "Bruder" },
+  { value: "other", label: "Sonstige" },
 ];
 
 // Predefined staff list for the orientation interview dropdown
 const STAFF_OPTIONS = [
-  { value: "", label: "Mitarbeitenden auswählen..." },
   { value: "Mitarbeiter 1", label: "Mitarbeiter 1" },
   { value: "Mitarbeiter 2", label: "Mitarbeiter 2" },
   { value: "Mitarbeiter 3", label: "Mitarbeiter 3" },
@@ -48,13 +73,13 @@ const INITIAL_FORM_DATA = {
   vorname: "",
   nachname: "",
   geburtsdatum: "",
-  geschlecht: "m",
+  geschlecht: "male",
 
   // Step 2: Contact Details
   strasse_hausnummer: "",
   postleitzahl: "",
   ort: "München",
-  land: "Deutschland",
+  land: "DE",
   sektor: "",
   mobile: "",
   telefon: "",
@@ -107,7 +132,7 @@ function isValidEmail(email) {
 
 /**
  * NewMemberForm Component
- * 3-step wizard for capturing member master data.
+ * 3-step wizard for capturing member master data and persisting to the backend.
  *
  * @param {Object} props
  * @param {Function} props.onBackToHome - Navigation callback returning to the dashboard
@@ -187,28 +212,60 @@ export default function NewMemberForm({ onBackToHome }) {
   }
 
   /**
-   * Handles local save, registers simulated member into MemberContext, and resets the wizard.
+   * Maps German frontend form state to the backend's MemberCreate Pydantic schema.
+   * Strictly excludes unknown fields so backend extra="forbid" validation passes.
+   *
+   * @param {Object} data - Current form state
+   * @returns {Object} Clean JSON payload for POST /api/v1/members
    */
-  function handleFinalSave() {
-    setShowConfirmation(false);
-    setErrorMessage("");
-    setIsSubmitting(true);
+  function buildMemberPayload(data) {
+    const fullPhone = data.mobile?.trim()
+      ? `+49${data.mobile.trim().replace(/^0+/, "")}`
+      : data.telefon?.trim() || null;
 
-    // Generate local mock code and unique identifier for continuous client-side entry
-    const generatedCode = `${formData.nachname.slice(0, 4).toUpperCase()}01`;
-    const newMemberRecord = {
-      member_id: crypto.randomUUID ? crypto.randomUUID() : `temp-${Date.now()}`,
-      member_code: generatedCode,
-      first_name: formData.vorname.trim(),
-      last_name: formData.nachname.trim(),
-      membership_status: "mo",
+    const payload = {
+      first_name: data.vorname.trim(),
+      last_name: data.nachname.trim(),
+      date_of_birth: data.geburtsdatum,
+      join_date: data.eintrittsdatum,
+      salutation: data.anrede || null,
+      gender: data.geschlecht || null,
+      phone: fullPhone,
+      email: data.email?.trim() || null,
+      street_address: data.strasse_hausnummer?.trim() || null,
+      postal_code: data.postleitzahl?.trim() || null,
+      city: data.ort?.trim() || null,
+      country: data.land || "DE",
     };
 
-    // Immediately push into central cache so BabPage and PhoneLogPage can select this member
-    addMember(newMemberRecord);
+    // Include nested emergency_contact only if both required fields (name & phone) are filled
+    if (data.notfall_name?.trim() && data.notfall_mobile?.trim()) {
+      payload.emergency_contact = {
+        name: data.notfall_name.trim(),
+        phone: data.notfall_mobile.trim(),
+        relationship: data.notfall_beziehung || null,
+      };
+    }
 
-    setTimeout(() => {
-      setIsSubmitting(false);
+    return payload;
+  }
+
+  /**
+   * Submits the new member record to the API, updates global context, and resets the wizard.
+   */
+  async function handleFinalSave() {
+    setIsSubmitting(true);
+    setErrorMessage("");
+    try {
+      const payload = buildMemberPayload(formData);
+      const createdMember = await createMember(payload);
+
+      // Update global member cache immediately so BAB & Phone Log show the new member
+      if (addMember) {
+        addMember(createdMember);
+      }
+
+      setShowConfirmation(false);
       setSaveSuccess(true);
       setCurrentStep(1);
       setFormData(INITIAL_FORM_DATA);
@@ -216,14 +273,25 @@ export default function NewMemberForm({ onBackToHome }) {
       setTimeout(() => {
         setSaveSuccess(false);
       }, 4000);
-    }, 500);
+    } catch (err) {
+      setShowConfirmation(false);
+      setErrorMessage(`Fehler beim Speichern des Mitglieds: ${err.message}`);
+    } finally {
+      setIsSubmitting(false);
+    }
   }
+
+  // Resolve human-readable German label for salutation in the confirmation summary
+  const salutationLabel =
+    formData.anrede && formData.anrede !== "unspecified"
+      ? SALUTATION_OPTIONS.find((opt) => opt.value === formData.anrede)?.label
+      : "";
 
   const confirmationItems = [
     {
       label: "Name",
       value:
-        `${formData.anrede ? formData.anrede + " " : ""}${formData.vorname} ${formData.nachname}`.trim(),
+        `${salutationLabel ? salutationLabel + " " : ""}${formData.vorname} ${formData.nachname}`.trim(),
     },
     { label: "Geburtsdatum", value: formData.geburtsdatum || "-" },
     {
@@ -243,10 +311,7 @@ export default function NewMemberForm({ onBackToHome }) {
   ];
 
   return (
-    <article
-      aria-labelledby="member-registration-heading"
-      className="max-w-4xl mx-auto bg-white rounded-2xl shadow-md border border-gray-200 p-8"
-    >
+    <article aria-labelledby="member-registration-heading" className="app-card">
       <header className="mb-4">
         <h2
           id="member-registration-heading"
@@ -311,26 +376,13 @@ export default function NewMemberForm({ onBackToHome }) {
             </legend>
 
             <div className="grid grid-cols-3 gap-3">
-              <div className="flex flex-col gap-1">
-                <label
-                  htmlFor="salutation"
-                  className="text-sm font-semibold text-gray-800"
-                >
-                  Anrede / Titel
-                </label>
-                <select
-                  id="salutation"
-                  value={formData.anrede}
-                  onChange={(e) => handleChange("anrede", e.target.value)}
-                  className="h-10 w-full rounded-md border border-gray-300 px-2 text-sm bg-white shadow-xs focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                >
-                  {SALUTATION_OPTIONS.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <SelectDropdown
+                id="salutation"
+                label="Anrede / Titel"
+                value={formData.anrede}
+                onChange={(e) => handleChange("anrede", e.target.value)}
+                options={SALUTATION_OPTIONS}
+              />
 
               <InputField
                 id="first-name"
@@ -407,13 +459,14 @@ export default function NewMemberForm({ onBackToHome }) {
             </div>
 
             <div className="grid grid-cols-2 gap-3">
-              <InputField
+              <SelectDropdown
                 id="country"
                 label="Land"
                 value={formData.land}
                 onChange={(e) => handleChange("land", e.target.value)}
-                onlyLetters
+                options={COUNTRY_OPTIONS}
               />
+
               <InputField
                 id="sector"
                 label="Sektor"
@@ -486,16 +539,17 @@ export default function NewMemberForm({ onBackToHome }) {
                   onlyLetters
                 />
                 <div className="grid grid-cols-2 gap-3">
-                  <InputField
+                  <SelectDropdown
                     id="emergency-relation"
                     label="Beziehung"
                     value={formData.notfall_beziehung}
                     onChange={(e) =>
                       handleChange("notfall_beziehung", e.target.value)
                     }
-                    placeholder="z. B. Mutter, Betreuer"
-                    onlyLetters
+                    options={RELATIONSHIP_OPTIONS}
+                    placeholder="Beziehung wählen..."
                   />
+
                   <InputField
                     id="emergency-phone"
                     label="Mobil"
@@ -527,28 +581,14 @@ export default function NewMemberForm({ onBackToHome }) {
               required
             />
 
-            <div className="flex flex-col gap-1">
-              <label
-                htmlFor="ori-interview"
-                className="text-sm font-semibold text-gray-800"
-              >
-                Orientierungsgespräch geführt von
-              </label>
-              <select
-                id="ori-interview"
-                value={formData.ori_mitarbeiter}
-                onChange={(e) =>
-                  handleChange("ori_mitarbeiter", e.target.value)
-                }
-                className="h-10 w-full rounded-md border border-gray-300 px-3 text-sm text-gray-900 bg-white shadow-xs focus:ring-2 focus:ring-blue-500 focus:outline-none"
-              >
-                {STAFF_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <SelectDropdown
+              id="ori-interview"
+              label="Orientierungsgespräch geführt von"
+              value={formData.ori_mitarbeiter}
+              onChange={(e) => handleChange("ori_mitarbeiter", e.target.value)}
+              options={STAFF_OPTIONS}
+              placeholder="Mitarbeitenden auswählen..."
+            />
           </fieldset>
         )}
 

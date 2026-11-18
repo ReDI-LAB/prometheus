@@ -119,7 +119,6 @@ export async function createAttendance({
   time_out,
 }) {
   try {
-    // KORRIGIERT: Kein doppeltes /api/v1 mehr!
     const response = await fetch(`${API_BASE_URL}/attendance`, {
       method: "POST",
       headers: {

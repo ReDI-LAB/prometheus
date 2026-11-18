@@ -77,9 +77,12 @@ export default function BabPage({ onBackToHome }) {
 
   // Derived calculations: duration and status indicators
   const totalHours = calculateDuration(arrival, departure);
-  const statusBadge = selectedMember?.membership_status || selectedMember?.mitgliedsstatus
-    ? (selectedMember.membership_status || selectedMember.mitgliedsstatus).toUpperCase()
-    : "MO";
+  const statusBadge =
+    selectedMember?.membership_status || selectedMember?.mitgliedsstatus
+      ? (
+          selectedMember.membership_status || selectedMember.mitgliedsstatus
+        ).toUpperCase()
+      : "MO";
   const attendanceMonthly = "9 / Monat"; // Placeholder attendance counter
 
   // --- UI Feedback & Submission States ---
@@ -171,15 +174,18 @@ export default function BabPage({ onBackToHome }) {
   const confirmationItems = [
     { label: "Datum", value: formatDisplayDate(date) },
     { label: "Name des Mitglieds", value: memberDisplayName },
-    { label: "Zeiten / Gesamtdauer", value: `${arrival} – ${departure} (${totalHours})` },
-    { label: "Status / Anwesenheit", value: `${statusBadge} · ${attendanceMonthly}` },
+    {
+      label: "Zeiten / Gesamtdauer",
+      value: `${arrival} – ${departure} (${totalHours})`,
+    },
+    {
+      label: "Status / Anwesenheit",
+      value: `${statusBadge} · ${attendanceMonthly}`,
+    },
   ];
 
   return (
-    <article
-      aria-labelledby="bab-form-heading"
-      className="max-w-4xl mx-auto bg-white rounded-2xl shadow-md border border-gray-200 p-8"
-    >
+    <article aria-labelledby="bab-form-heading">
       <header className="mb-4">
         <h2 id="bab-form-heading" className="text-lg font-bold text-gray-900">
           Neuer Anwesenheitseintrag

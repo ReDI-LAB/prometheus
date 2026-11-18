@@ -1,12 +1,12 @@
-import { useState } from 'react';
-import InputField from '../components/InputField';
-import MemberSearchSelect from '../components/MemberSearchSelect';
-import SelectDropdown from '../components/SelectDropdown';
-import TextareaField from '../components/TextareaField';
-import FormButton from '../components/FormButton';
-import ConfirmationCard from '../components/ConfirmationCard';
-import { createPhoneCall } from '../services/api';
-import { useMembers } from '../context/useMembers';
+import { useState } from "react";
+import InputField from "../components/InputField";
+import MemberSearchSelect from "../components/MemberSearchSelect";
+import SelectDropdown from "../components/SelectDropdown";
+import TextareaField from "../components/TextareaField";
+import FormButton from "../components/FormButton";
+import ConfirmationCard from "../components/ConfirmationCard";
+import { createPhoneCall } from "../services/api";
+import { useMembers } from "../context/useMembers";
 
 /**
  * Calculates previous business day (Monday through Friday) synchronously.
@@ -22,22 +22,22 @@ function getPreviousBusinessDay() {
 
   const lastWorkday = new Date(today);
   lastWorkday.setDate(today.getDate() - diff);
-  return lastWorkday.toISOString().split('T')[0];
+  return lastWorkday.toISOString().split("T")[0];
 }
 
 // Predefined call reason categories (1-5) matching backend topic_code
 const CALL_REASONS = [
-  { value: '1', label: '1 · Schichtanmeldung' },
-  { value: '2', label: '2 · Clubhaus-Angelegenheiten' },
-  { value: '3', label: '3 · Beratungsgespräch' },
-  { value: '4', label: '4 · Krisenintervention' },
-  { value: '5', label: '5 · Begleitgespräch' },
+  { value: "1", label: "1 · Schichtanmeldung" },
+  { value: "2", label: "2 · Clubhaus-Angelegenheiten" },
+  { value: "3", label: "3 · Beratungsgespräch" },
+  { value: "4", label: "4 · Krisenintervention" },
+  { value: "5", label: "5 · Begleitgespräch" },
 ];
 
 // Caller identity options
 const CALLER_OPTIONS = [
-  { value: 'member', label: 'Mitglied' },
-  { value: 'staff', label: 'Mitarbeiter' },
+  { value: "member", label: "Mitglied" },
+  { value: "staff", label: "Mitarbeiter" },
 ];
 
 /**
@@ -55,16 +55,16 @@ export default function PhoneLogPage({ onBackToHome }) {
   const [date, setDate] = useState(getPreviousBusinessDay);
   const [isEditingDate, setIsEditingDate] = useState(false);
   const [selectedMember, setSelectedMember] = useState(null);
-  const [caller, setCaller] = useState('member');
-  const [duration, setDuration] = useState('');
-  const [reason, setReason] = useState('');
-  const [note, setNote] = useState('');
+  const [caller, setCaller] = useState("member");
+  const [duration, setDuration] = useState("");
+  const [reason, setReason] = useState("");
+  const [note, setNote] = useState("");
 
   // --- UI Feedback & Network States ---
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
-  const [errorMessage, setErrorMessage] = useState('');
+  const [errorMessage, setErrorMessage] = useState("");
 
   /**
    * Formats ISO date string into German localized date (e.g. "Montag, 01.09.2026").
@@ -73,13 +73,13 @@ export default function PhoneLogPage({ onBackToHome }) {
    * @returns {string} Localized date string
    */
   function formatDisplayDate(dateString) {
-    if (!dateString) return '';
+    if (!dateString) return "";
     const d = new Date(dateString);
-    return d.toLocaleDateString('de-DE', {
-      weekday: 'long',
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
+    return d.toLocaleDateString("de-DE", {
+      weekday: "long",
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
     });
   }
 
@@ -92,11 +92,11 @@ export default function PhoneLogPage({ onBackToHome }) {
     e.preventDefault();
 
     if (!selectedMember) {
-      alert('Bitte wählen Sie ein Mitglied aus.');
+      alert("Bitte wählen Sie ein Mitglied aus.");
       return;
     }
     if (!reason) {
-      alert('Bitte wählen Sie den Grund des Anrufs aus.');
+      alert("Bitte wählen Sie den Grund des Anrufs aus.");
       return;
     }
     setShowConfirmation(true);
@@ -107,7 +107,7 @@ export default function PhoneLogPage({ onBackToHome }) {
    */
   async function handleFinalSave() {
     setShowConfirmation(false);
-    setErrorMessage('');
+    setErrorMessage("");
     setIsSubmitting(true);
 
     try {
@@ -124,44 +124,43 @@ export default function PhoneLogPage({ onBackToHome }) {
 
       // Reset member fields for paper batch entry; preserve date
       setSelectedMember(null);
-      setDuration('');
-      setReason('');
-      setNote('');
-      setCaller('member');
+      setDuration("");
+      setReason("");
+      setNote("");
+      setCaller("member");
 
       setTimeout(() => {
         setSaveSuccess(false);
       }, 3000);
     } catch (err) {
-      setErrorMessage(err.message || 'Fehler beim Speichern der Telefondokumentation.');
+      setErrorMessage(
+        err.message || "Fehler beim Speichern der Telefondokumentation.",
+      );
     } finally {
       setIsSubmitting(false);
     }
   }
 
   const selectedReasonLabel =
-    CALL_REASONS.find((r) => r.value === reason)?.label || 'Nicht ausgewählt';
+    CALL_REASONS.find((r) => r.value === reason)?.label || "Nicht ausgewählt";
   const selectedCallerLabel =
     CALLER_OPTIONS.find((c) => c.value === caller)?.label || caller;
 
   const confirmationItems = [
-    { label: 'Datum', value: formatDisplayDate(date) },
+    { label: "Datum", value: formatDisplayDate(date) },
     {
-      label: 'Mitglied',
+      label: "Mitglied",
       value: selectedMember
         ? `${selectedMember.first_name} ${selectedMember.last_name} (${selectedMember.member_code})`
-        : '',
+        : "",
     },
-    { label: 'Wer telefoniert', value: selectedCallerLabel },
-    { label: 'Dauer', value: `${duration} Minuten` },
-    { label: 'Grund des Anrufs', value: selectedReasonLabel },
+    { label: "Wer telefoniert", value: selectedCallerLabel },
+    { label: "Dauer", value: `${duration} Minuten` },
+    { label: "Grund des Anrufs", value: selectedReasonLabel },
   ];
 
   return (
-    <article
-      aria-labelledby="phone-log-heading"
-      className="max-w-4xl mx-auto bg-white rounded-2xl shadow-md border border-gray-200 p-8"
-    >
+    <article aria-labelledby="phone-log-heading">
       <header className="mb-4">
         <h2 id="phone-log-heading" className="text-lg font-bold text-gray-900">
           Neuer Telefondoku-Eintrag
@@ -192,7 +191,7 @@ export default function PhoneLogPage({ onBackToHome }) {
           <span>✕ {errorMessage}</span>
           <button
             type="button"
-            onClick={() => setErrorMessage('')}
+            onClick={() => setErrorMessage("")}
             className="text-red-700 hover:text-red-900 font-bold ml-2 cursor-pointer"
             aria-label="Fehlermeldung schließen"
           >
@@ -202,7 +201,10 @@ export default function PhoneLogPage({ onBackToHome }) {
       )}
 
       {/* Date header section with interactive edit toggle */}
-      <section aria-label="Datumsangabe" className="mb-5 pb-3 border-b border-gray-100">
+      <section
+        aria-label="Datumsangabe"
+        className="mb-5 pb-3 border-b border-gray-100"
+      >
         <div className="flex items-center gap-2">
           <span className="text-sm font-semibold text-gray-800">
             Datum: {formatDisplayDate(date)}
@@ -245,7 +247,11 @@ export default function PhoneLogPage({ onBackToHome }) {
           members={members}
           selectedMember={selectedMember}
           onSelect={(member) => setSelectedMember(member)}
-          placeholder={isLoadingMembers ? 'Lade Mitglieder...' : 'Mitglied nach Name oder Code suchen...'}
+          placeholder={
+            isLoadingMembers
+              ? "Lade Mitglieder..."
+              : "Mitglied nach Name oder Code suchen..."
+          }
           required
         />
 
@@ -301,7 +307,7 @@ export default function PhoneLogPage({ onBackToHome }) {
             Abbrechen
           </FormButton>
           <FormButton type="submit" variant="dark" disabled={isSubmitting}>
-            {isSubmitting ? 'Wird gespeichert...' : 'Eintrag speichern'}
+            {isSubmitting ? "Wird gespeichert..." : "Eintrag speichern"}
           </FormButton>
         </div>
       </form>

@@ -34,30 +34,27 @@ export default function App() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-gray-100 text-gray-900 font-sans">
+    <div className="min-h-screen">
       {/* Header: Left logo/branding with Link to home, Right Clubhouse title & Backend indicator */}
-      <header className="bg-gray-200 border-b border-gray-300 px-8 py-4">
-        <div className="max-w-4xl mx-auto flex items-center justify-between">
+      <header className="bg-white border-b border-gray-300 px-8 py-4">
+        <div className="app-container flex items-center justify-between">
           <Link
             to="/"
             className="cursor-pointer flex items-center gap-3 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded-md p-1"
             aria-label="Zurück zur Startseite"
           >
-            <div className="flex flex-col items-center justify-around gap-1">
+            <div className="">
               <img
                 src={clubhouseLogo}
                 alt="ClubHaus Logo"
                 className="h-20 w-auto object-contain"
               />
-              <h1 className="text-base font-semibold text-gray-800">
-                ClubHaus München Giesing
-              </h1>
             </div>
 
             <img
               src={homeIcon}
               alt="Home icon"
-              className="h-18 w-auto cursor-pointer hover:opacity-80 transition-opacity"
+              className="h-16 w-auto cursor-pointer fill-sky-600 hover:opacity-80 transition-opacity"
             />
           </Link>
 
@@ -79,7 +76,7 @@ export default function App() {
       </header>
 
       {/* Main semantic area: Declarative routing views */}
-      <main className="max-w-4xl mx-auto px-0 py-10">
+      <main className="app-container py-10">
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route
