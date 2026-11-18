@@ -56,6 +56,9 @@ class MemberCurrent(ViewBase):
     postal_code: Mapped[str | None] = mapped_column(sa.Text)
     city: Mapped[str | None] = mapped_column(sa.Text)
     country: Mapped[str | None] = mapped_column(sa.Text)
+    # Derived by the database from postal_code (sectors lookup); NULL when the
+    # member has no postal code.
+    sector: Mapped[str | None] = mapped_column(sa.Text)
     # activity_status_on() returns NULL when there is no last_visit_date,
     # i.e. before the member's first attendance entry.
     is_active: Mapped[bool | None] = mapped_column(sa.Boolean)

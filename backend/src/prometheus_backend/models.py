@@ -54,6 +54,27 @@ class Language(CodeLookupMixin, Base):
     __tablename__ = "languages"
 
 
+class Sector(Base):
+    """Postal-code-to-sector lookup (Munich pilot).
+
+    Not a code/label lookup: members.postal_code references postal_code, not
+    code. The CHECK constraints on postal_code format and the four sector
+    names are enforced by the database and not mirrored here.
+    """
+
+    __tablename__ = "sectors"
+
+    code: Mapped[str] = mapped_column(sa.Text, primary_key=True)
+    postal_code: Mapped[str] = mapped_column(sa.Text, unique=True)
+    sector: Mapped[str] = mapped_column(sa.Text)
+    city: Mapped[str] = mapped_column(sa.Text)
+    # No explicit index in the SQL; left to the schema's dynamic ix_fk_*
+    # maintenance pass.
+    country: Mapped[str] = mapped_column(
+        sa.ForeignKey("countries.code", ondelete="RESTRICT", onupdate="NO ACTION")
+    )
+
+
 class StaffStatus(CodeLookupMixin, Base):
     __tablename__ = "staff_statuses"
 
@@ -222,7 +243,10 @@ class Member(Base):
     phone: Mapped[str | None] = mapped_column(sa.Text)
     email: Mapped[str | None] = mapped_column(sa.Text)
     street_address: Mapped[str | None] = mapped_column(sa.Text)
-    postal_code: Mapped[str | None] = mapped_column(sa.Text)
+    # NULL or one of sectors.postal_code; the database rejects anything else.
+    postal_code: Mapped[str | None] = mapped_column(
+        sa.ForeignKey("sectors.postal_code", ondelete="RESTRICT", onupdate="NO ACTION")
+    )
     city: Mapped[str | None] = mapped_column(sa.Text)
     country: Mapped[str | None] = mapped_column(
         sa.ForeignKey("countries.code", ondelete="RESTRICT", onupdate="NO ACTION")
