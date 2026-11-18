@@ -12,11 +12,11 @@ Python FastAPI backend for Project Prometheus.
 
 ### Database
 
-The schema script (version 2) lives on the `data_architecture` branch, not on this one. Fetch it and save it outside the repository:
+The schema script (version 3) lives on the `data_architecture` branch, not on this one. Fetch it and save it outside the repository:
 
 ```sh
 git fetch origin
-git show origin/data_architecture:data_architecture/prometheus_redi_schema_V2.sql > ~/prometheus_redi_schema_V2.sql
+git show origin/data_architecture:data_architecture/prometheus_redi_schema_V3.sql > ~/prometheus_redi_schema_V3.sql
 ```
 
 Start a PostgreSQL 17 container for it. The script itself requires an empty database named exactly `prometheus_redi` on PostgreSQL 17+, and refuses to run otherwise:
@@ -35,22 +35,22 @@ Wait until the container is ready, then run the script against it. The readiness
 
 ```sh
 until docker exec prometheus-redi-db pg_isready -h 127.0.0.1 -U postgres -d prometheus_redi; do sleep 1; done
-cat ~/prometheus_redi_schema_V2.sql | docker exec -i prometheus-redi-db psql -U postgres -d prometheus_redi -v ON_ERROR_STOP=1
+cat ~/prometheus_redi_schema_V3.sql | docker exec -i prometheus-redi-db psql -U postgres -d prometheus_redi -v ON_ERROR_STOP=1
 ```
 
-A successful run ends with the line `Prometheus Redi V2 installation complete`. Never run this script against a database that already has data in it — it only installs into a genuinely empty database. The backend itself never creates or changes tables; all schema changes come from this script.
+A successful run ends with the line `Prometheus Redi V3 installation complete`. Never run this script against a database that already has data in it — it only installs into a genuinely empty database. The backend itself never creates or changes tables; all schema changes come from this script.
 
 #### Verify the installation (optional)
 
-The `data_architecture` branch also contains two check files. They verify an installation that already exists; never use them to install the schema. Both must run in full, against the `prometheus_redi` database:
+The `data_architecture` branch also contains a regression test file for the schema. It verifies an installation that already exists; never use it to install the schema. It must run in full, against the `prometheus_redi` database:
 
-- `prometheus_redi_healthcheck_V2.sql` is a read-only check (it runs in a read-only transaction) that prints the installed columns, table and partition counts and the lookup values.
-- `prometheus_redi_schema_tests_V2.sql` is a regression test suite. It uses synthetic rows and runs inside a transaction that ends with `ROLLBACK`, so it leaves no data behind. If it fails, execute `ROLLBACK;` before trying again.
+- `prometheus_redi_schema_tests_V3.sql` uses synthetic rows and runs inside a transaction that ends with `ROLLBACK`, so it leaves no data behind. If it fails, execute `ROLLBACK;` before trying again, and never rerun the installer.
 
 ```sh
-git show origin/data_architecture:data_architecture/prometheus_redi_healthcheck_V2.sql | docker exec -i prometheus-redi-db psql -v ON_ERROR_STOP=1 -U postgres -d prometheus_redi
-git show origin/data_architecture:data_architecture/prometheus_redi_schema_tests_V2.sql | docker exec -i prometheus-redi-db psql -v ON_ERROR_STOP=1 -U postgres -d prometheus_redi
+git show origin/data_architecture:data_architecture/prometheus_redi_schema_tests_V3.sql | docker exec -i prometheus-redi-db psql -v ON_ERROR_STOP=1 -U postgres -d prometheus_redi
 ```
+
+An optional read-only healthcheck file for version 3 is not available yet.
 
 ### Test data
 
@@ -82,6 +82,12 @@ Look up the valid `topic_code` values for phone calls:
 
 ```sql
 SELECT code, label FROM public.call_topics ORDER BY sort_order;
+```
+
+Look up the valid postal codes for members. A member's `postal_code` must be one of these (for example `80333`, sector North) or empty:
+
+```sql
+SELECT postal_code, sector FROM public.sectors ORDER BY postal_code;
 ```
 
 ### Configuration
@@ -136,18 +142,19 @@ Local URLs:
 | GET    | `/api/v1/attendance`  | List attendance entries, filterable by member and date range |
 | POST   | `/api/v1/members`     | Create a member, optionally with one emergency contact |
 | GET    | `/api/v1/members`     | List members for a selector, with search, `is_active` filter and paging |
-| GET    | `/api/v1/lookups`     | All lookup lists (salutations, genders, countries, contact relationships, caller types, call topics) |
+| GET    | `/api/v1/lookups`     | All lookup lists (salutations, genders, countries, contact relationships, caller types, call topics, sectors) |
 | GET    | `/api/v1/clubhouses`  | List clubhouses, ordered by name |
 | GET    | `/api/v1/staff`       | List staff (names, role, clubhouse, status), filterable by clubhouse and status, with paging |
 
-The `code` values returned by `GET /api/v1/lookups` are the values the create endpoints expect: `salutation`, `gender`, `country` and the emergency contact `relationship` for `POST /api/v1/members`, and `person_type` and `topic_code` (an integer) for `POST /api/v1/phone-calls`. Each list is ordered by `sort_order`. `GET /api/v1/staff` never includes email or other contact details and omits anonymized people; `staff_status` is matched exactly.
+The `code` values returned by `GET /api/v1/lookups` are the values the create endpoints expect: `salutation`, `gender`, `country` and the emergency contact `relationship` for `POST /api/v1/members`, and `person_type` and `topic_code` (an integer) for `POST /api/v1/phone-calls`. The code/label lists are ordered by `sort_order`. The `sectors` list has a different shape (`postal_code`, `sector`, `city`, `country`) and is ordered by `postal_code`; its `postal_code` values are the ones `POST /api/v1/members` accepts. `GET /api/v1/staff` never includes email or other contact details and omits anonymized people; `staff_status` is matched exactly.
 
-`POST /api/v1/members` takes `first_name`, `last_name`, `date_of_birth` and `join_date` (required) and the optional `salutation`, `gender`, `phone`, `email`, `street_address`, `postal_code`, `city`, `country` and `clubhouse_id`. An optional `emergency_contact` object (`name`, `phone`, optional `relationship`) is stored in the same transaction, so a failure rolls back the member too. `salutation`, `gender`, `country` and `relationship` are lookup codes that the database validates. If `clubhouse_id` is omitted, the only existing clubhouse is used (`409` if none exists, `422` if there are several). Unknown fields are rejected with `422`. The response is `201` with the member as in the list below, including the generated `member_code`; `member_code`, `is_member` and `is_active` are set by the database and cannot be sent.
+`POST /api/v1/members` takes `first_name`, `last_name`, `date_of_birth` and `join_date` (required) and the optional `salutation`, `gender`, `phone`, `email`, `street_address`, `postal_code`, `city`, `country` and `clubhouse_id`. An optional `emergency_contact` object (`name`, `phone`, optional `relationship`) is stored in the same transaction, so a failure rolls back the member too. `salutation`, `gender`, `country` and `relationship` are lookup codes that the database validates. `postal_code` must be one of the Munich postal codes in the `sectors` list (for example `80333`), or empty or omitted; any other value is rejected with `422` "Unknown postal_code". If `clubhouse_id` is omitted, the only existing clubhouse is used (`409` if none exists, `422` if there are several). Unknown fields are rejected with `422`. The response is `201` with the member as in the list below, including the generated `member_code`; `member_code`, `is_member` and `is_active` are set by the database and cannot be sent.
 
 `GET /api/v1/members` reads the `members_current` view. `search` (up to 100 characters) matches every word, case-insensitively, against first name, last name or member code; by default only current members are returned (`include_left=true` also includes members who have left, never anonymized ones), and `is_active` (`true` or `false`) filters by activity.
 
-Each member item contains `member_id`, `member_code`, `first_name`, `last_name`, `is_member` and `is_active`:
+Each member item contains `member_id`, `member_code`, `first_name`, `last_name`, `is_member`, `is_active` and `sector`:
 
+- `sector` (`North`, `South`, `East` or `West`) is derived by the database from the member's postal code, and is `null` when the member has none.
 - `is_member` is `false` for newcomers and `true` from day 43 after the join date.
 - `is_active` is `true` up to 90 days after the last visit and `false` afterwards. It is `null` until the member's first visit, which the frontend should treat as unknown. Members with a `null` value match neither `is_active=true` nor `is_active=false`, so a member selector should not filter on `is_active`.
 
