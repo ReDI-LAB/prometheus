@@ -161,3 +161,66 @@ class MemberCreate(BaseModel):
     country: Annotated[str | None, _optional_text(50)] = None
     clubhouse_id: uuid.UUID | None = None
     emergency_contact: EmergencyContactCreate | None = None
+
+
+class LookupItem(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    code: str = Field(description="Value to send in requests that reference this lookup.")
+    label: str
+    sort_order: int
+
+
+class CallTopicItem(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    code: int = Field(description="Integer value to send as topic_code.")
+    label: str
+    sort_order: int
+
+
+class LookupsRead(BaseModel):
+    """All lookup lists, each ordered by sort_order and then code."""
+
+    salutations: list[LookupItem]
+    genders: list[LookupItem]
+    countries: list[LookupItem]
+    contact_relationships: list[LookupItem]
+    caller_types: list[LookupItem]
+    call_topics: list[CallTopicItem]
+
+
+class ClubhouseRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    clubhouse_id: uuid.UUID
+    name: str
+    street_address: str | None
+    postal_code: str | None
+    city: str | None
+    country: str | None
+    timezone: str
+    primary_language: str | None
+    is_active: bool
+
+
+class StaffSummary(BaseModel):
+    """Staff entry without contact details such as email."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    staff_id: uuid.UUID
+    staff_code: str
+    # Nullable because the database clears names when a person is anonymized.
+    first_name: str | None
+    last_name: str | None
+    role: str
+    clubhouse_id: uuid.UUID
+    staff_status: str
+
+
+class StaffPage(BaseModel):
+    items: list[StaffSummary]
+    total: int
+    limit: int
+    offset: int

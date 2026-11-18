@@ -136,6 +136,11 @@ Local URLs:
 | GET    | `/api/v1/attendance`  | List attendance entries, filterable by member and date range |
 | POST   | `/api/v1/members`     | Create a member, optionally with one emergency contact |
 | GET    | `/api/v1/members`     | List members for a selector, with search, `is_active` filter and paging |
+| GET    | `/api/v1/lookups`     | All lookup lists (salutations, genders, countries, contact relationships, caller types, call topics) |
+| GET    | `/api/v1/clubhouses`  | List clubhouses, ordered by name |
+| GET    | `/api/v1/staff`       | List staff (names, role, clubhouse, status), filterable by clubhouse and status, with paging |
+
+The `code` values returned by `GET /api/v1/lookups` are the values the create endpoints expect: `salutation`, `gender`, `country` and the emergency contact `relationship` for `POST /api/v1/members`, and `person_type` and `topic_code` (an integer) for `POST /api/v1/phone-calls`. Each list is ordered by `sort_order`. `GET /api/v1/staff` never includes email or other contact details and omits anonymized people; `staff_status` is matched exactly.
 
 `POST /api/v1/members` takes `first_name`, `last_name`, `date_of_birth` and `join_date` (required) and the optional `salutation`, `gender`, `phone`, `email`, `street_address`, `postal_code`, `city`, `country` and `clubhouse_id`. An optional `emergency_contact` object (`name`, `phone`, optional `relationship`) is stored in the same transaction, so a failure rolls back the member too. `salutation`, `gender`, `country` and `relationship` are lookup codes that the database validates. If `clubhouse_id` is omitted, the only existing clubhouse is used (`409` if none exists, `422` if there are several). Unknown fields are rejected with `422`. The response is `201` with the member as in the list below, including the generated `member_code`; `member_code`, `is_member` and `is_active` are set by the database and cannot be sent.
 

@@ -7,8 +7,11 @@ from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 
 from prometheus_backend.api.attendance import router as attendance_router
+from prometheus_backend.api.clubhouses import router as clubhouses_router
+from prometheus_backend.api.lookups import router as lookups_router
 from prometheus_backend.api.members import router as members_router
 from prometheus_backend.api.phone_calls import router as phone_calls_router
+from prometheus_backend.api.staff import router as staff_router
 from prometheus_backend.database import SessionDep
 from prometheus_backend.settings import Settings
 
@@ -54,6 +57,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(phone_calls_router)
     app.include_router(attendance_router)
     app.include_router(members_router)
+    app.include_router(lookups_router)
+    app.include_router(clubhouses_router)
+    app.include_router(staff_router)
 
     return app
 
