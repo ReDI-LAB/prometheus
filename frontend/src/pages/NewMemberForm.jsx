@@ -26,10 +26,9 @@ const SALUTATION_OPTIONS = [
 
 // Gender options mapped to V2 database lookup codes
 const GENDER_OPTIONS = [
-  { value: "female", label: "Weiblich" },
   { value: "male", label: "Männlich" },
+  { value: "female", label: "Weiblich" },
   { value: "diverse", label: "Divers" },
-  { value: "unspecified", label: "Keine Angabe" },
 ];
 
 // Country ISO codes accepted by public.countries foreign key
@@ -61,24 +60,25 @@ const RELATIONSHIP_OPTIONS = [
 
 // Predefined staff list for the orientation interview dropdown
 const STAFF_OPTIONS = [
-  { value: "Mitarbeiter 1", label: "Mitarbeiter 1" },
-  { value: "Mitarbeiter 2", label: "Mitarbeiter 2" },
-  { value: "Mitarbeiter 3", label: "Mitarbeiter 3" },
+  { value: "Emma Weber", label: "Emma Weber" },
+  { value: "Hannah Müller", label: "Hannah Müller" },
+  { value: "Merle Schneider", label: "Merle Schneider" },
+  { value: "Mia Weber", label: "Mia Weber" },
 ];
 
-// Initial form state matching database column requirements
+// Initial blank form state matching database column requirements
 const INITIAL_FORM_DATA = {
   // Step 1: Personal Details
   anrede: "",
   vorname: "",
   nachname: "",
   geburtsdatum: "",
-  geschlecht: "male",
+  geschlecht: "",
 
   // Step 2: Contact Details
   strasse_hausnummer: "",
   postleitzahl: "",
-  ort: "München",
+  ort: "",
   land: "DE",
   sektor: "",
   mobile: "",
@@ -90,7 +90,7 @@ const INITIAL_FORM_DATA = {
   notfall_beziehung: "",
   notfall_mobile: "",
 
-  // Step 3: ClubHaus
+  // Step 3: ClubHaus (pre-filled with today's date)
   eintrittsdatum: new Date().toISOString().split("T")[0],
   ori_mitarbeiter: "",
   mitgliedsstatus: "mo",
@@ -133,11 +133,8 @@ function isValidEmail(email) {
 /**
  * NewMemberForm Component
  * 3-step wizard for capturing member master data and persisting to the backend.
- *
- * @param {Object} props
- * @param {Function} props.onBackToHome - Navigation callback returning to the dashboard
  */
-export default function NewMemberForm({ onBackToHome }) {
+export default function NewMemberForm() {
   const { addMember } = useMembers();
 
   const [currentStep, setCurrentStep] = useState(1);
@@ -153,7 +150,7 @@ export default function NewMemberForm({ onBackToHome }) {
    * Updates form field state and triggers sector recalculation when postal code has 5 digits.
    *
    * @param {string} field - Field property key
-   * @param {string} value - New value
+   * @param {string} value - New field value
    */
   function handleChange(field, value) {
     setFormData((prev) => {
@@ -272,7 +269,7 @@ export default function NewMemberForm({ onBackToHome }) {
 
       setTimeout(() => {
         setSaveSuccess(false);
-      }, 4000);
+      }, 3000);
     } catch (err) {
       setShowConfirmation(false);
       setErrorMessage(`Fehler beim Speichern des Mitglieds: ${err.message}`);
@@ -287,6 +284,7 @@ export default function NewMemberForm({ onBackToHome }) {
       ? SALUTATION_OPTIONS.find((opt) => opt.value === formData.anrede)?.label
       : "";
 
+  // Key-value summary rows displayed inside ConfirmationCard
   const confirmationItems = [
     {
       label: "Name",
@@ -294,339 +292,365 @@ export default function NewMemberForm({ onBackToHome }) {
         `${salutationLabel ? salutationLabel + " " : ""}${formData.vorname} ${formData.nachname}`.trim(),
     },
     { label: "Geburtsdatum", value: formData.geburtsdatum || "-" },
+    { label: "Straße & Hausnummer", value: formData.strasse_hausnummer || "-" },
+    { label: "Postleitzahl (PLZ)", value: formData.postleitzahl || "-" },
+    { label: "Stadt", value: formData.ort || "-" },
+    { label: "Mobil", value: formData.mobile ? `+49 ${formData.mobile}` : "-" },
+    { label: "E-Mail", value: formData.email || "-" },
+    { label: "Eintrittsdatum", value: formData.eintrittsdatum || "-" },
     {
-      label: "Adresse",
-      value: `${formData.strasse_hausnummer || "-"}, ${formData.postleitzahl} ${formData.ort}`,
-    },
-    { label: "Sektor", value: formData.sektor || "-" },
-    {
-      label: "Kontakt",
-      value: formData.mobile || formData.telefon || formData.email || "-",
-    },
-    { label: "Eintrittsdatum", value: formData.eintrittsdatum },
-    {
-      label: "Orientierungsgespräch",
-      value: formData.ori_mitarbeiter || "Nicht angegeben",
+      label: "Orientierungsgespräch geführt von",
+      value: formData.ori_mitarbeiter || "-",
     },
   ];
 
   return (
     <article aria-labelledby="member-registration-heading" className="app-card">
-      <header className="mb-4">
-        <h2
-          id="member-registration-heading"
-          className="text-lg font-bold text-gray-900"
-        >
-          Neues Mitglied anlegen
-        </h2>
-        <p className="text-xs text-gray-500 mt-1">
-          Erfassung der Mitglieder-Stammdaten (Schritt {currentStep} von 3)
-        </p>
+      {/* Dark Blue Header Bar (#05619A) */}
+      <header className="app-card-header">
+        <h2 id="member-registration-heading">Neues Mitglied anlegen</h2>
       </header>
 
-      <StepProgress steps={STEPS} currentStep={currentStep} />
-
-      {/* Success notification banner */}
-      {saveSuccess && (
-        <aside
-          role="status"
-          aria-live="polite"
-          className="mb-4 p-3 bg-green-50 border border-green-200 text-green-800 text-xs rounded-md flex items-center justify-between"
-        >
-          <span>
-            ✓ Mitglied erfolgreich registriert! Maske für nächste Eingabe
-            bereit.
-          </span>
-          <button
-            type="button"
-            onClick={() => setSaveSuccess(false)}
-            className="text-green-700 hover:text-green-900 font-bold ml-2 text-sm cursor-pointer"
-            aria-label="Erfolgsmeldung schließen"
+      <div className="p-6 sm:p-8">
+        {/* Error notification banner */}
+        {errorMessage && (
+          <aside
+            role="alert"
+            aria-live="assertive"
+            className="mb-4 p-3 bg-red-50 border border-[#B71D1D]/30 text-[#B71D1D] text-xs font-medium rounded-md flex items-center justify-between"
           >
-            ✕
-          </button>
-        </aside>
-      )}
-
-      {/* Error notification banner */}
-      {errorMessage && (
-        <aside
-          role="alert"
-          aria-live="assertive"
-          className="mb-4 p-3 bg-red-50 border border-red-200 text-red-800 text-xs rounded-md flex items-center justify-between"
-        >
-          <span>✕ {errorMessage}</span>
-          <button
-            type="button"
-            onClick={() => setErrorMessage("")}
-            className="text-red-700 hover:text-red-900 font-bold ml-2 text-sm cursor-pointer"
-            aria-label="Fehlermeldung schließen"
-          >
-            ✕
-          </button>
-        </aside>
-      )}
-
-      <form onSubmit={handleNextStep} className="space-y-4">
-        {/* Step 1: Personal Details */}
-        {currentStep === 1 && (
-          <fieldset className="space-y-4 border-0 p-0 m-0">
-            <legend className="w-full text-xs font-semibold uppercase tracking-wider text-gray-700 bg-gray-100 p-2 rounded-md mb-2">
-              Persönliche Daten
-            </legend>
-
-            <div className="grid grid-cols-3 gap-3">
-              <SelectDropdown
-                id="salutation"
-                label="Anrede / Titel"
-                value={formData.anrede}
-                onChange={(e) => handleChange("anrede", e.target.value)}
-                options={SALUTATION_OPTIONS}
-              />
-
-              <InputField
-                id="first-name"
-                label="Vorname"
-                value={formData.vorname}
-                onChange={(e) => handleChange("vorname", e.target.value)}
-                placeholder="z. B. Max"
-                required
-                onlyLetters
-              />
-
-              <InputField
-                id="last-name"
-                label="Nachname"
-                value={formData.nachname}
-                onChange={(e) => handleChange("nachname", e.target.value)}
-                placeholder="z. B. Mustermann"
-                required
-                onlyLetters
-              />
-            </div>
-
-            <BirthDatePicker
-              label="Geburtsdatum"
-              value={formData.geburtsdatum}
-              onChange={(val) => handleChange("geburtsdatum", val)}
-              required
-            />
-
-            <RadioGroup
-              label="Geschlecht"
-              name="gender"
-              value={formData.geschlecht}
-              onChange={(e) => handleChange("geschlecht", e.target.value)}
-              options={GENDER_OPTIONS}
-            />
-          </fieldset>
+            <span>✕ {errorMessage}</span>
+            <button
+              type="button"
+              onClick={() => setErrorMessage("")}
+              className="text-[#B71D1D] font-bold ml-2 text-sm cursor-pointer"
+              aria-label="Fehlermeldung schließen"
+            >
+              ✕
+            </button>
+          </aside>
         )}
 
-        {/* Step 2: Contact Details */}
-        {currentStep === 2 && (
-          <fieldset className="space-y-4 border-0 p-0 m-0">
-            <legend className="w-full text-xs font-semibold uppercase tracking-wider text-gray-700 bg-gray-100 p-2 rounded-md mb-2">
-              Kontaktdaten
-            </legend>
+        {/* Inner bordered form container */}
+        <div className="app-form-box">
+          <StepProgress steps={STEPS} currentStep={currentStep} />
 
-            <InputField
-              id="street"
-              label="Straße & Hausnummer"
-              value={formData.strasse_hausnummer}
-              onChange={(e) =>
-                handleChange("strasse_hausnummer", e.target.value)
-              }
-              placeholder="z. B. Giesinger Str. 12"
-            />
+          <form onSubmit={handleNextStep} className="space-y-5">
+            {/* Step 1: Personal Details */}
+            {currentStep === 1 && (
+              <fieldset className="space-y-5 border-0 p-0 m-0">
+                <legend className="app-section-banner">
+                  Persönliche Daten
+                </legend>
 
-            <div className="grid grid-cols-2 gap-3">
-              <InputField
-                id="plz"
-                label="Postleitzahl (PLZ)"
-                value={formData.postleitzahl}
-                onChange={(e) => handleChange("postleitzahl", e.target.value)}
-                placeholder="z. B. 81539"
-                maxLength={5}
-                onlyNumbers
-              />
-              <InputField
-                id="city"
-                label="Stadt / Ort"
-                value={formData.ort}
-                onChange={(e) => handleChange("ort", e.target.value)}
-                onlyLetters
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <SelectDropdown
-                id="country"
-                label="Land"
-                value={formData.land}
-                onChange={(e) => handleChange("land", e.target.value)}
-                options={COUNTRY_OPTIONS}
-              />
-
-              <InputField
-                id="sector"
-                label="Sektor"
-                value={formData.sektor}
-                onChange={(e) => handleChange("sektor", e.target.value)}
-                placeholder="Automatisch aus PLZ"
-                readOnly
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div className="flex flex-col gap-1">
-                <label
-                  htmlFor="mobile"
-                  className="text-sm font-semibold text-gray-800"
-                >
-                  Mobil
-                </label>
-                <div className="flex">
-                  <span className="inline-flex items-center px-2.5 rounded-l-md border border-r-0 border-gray-300 bg-gray-50 text-gray-600 text-xs select-none">
-                    🇩🇪 +49
-                  </span>
-                  <InputField
-                    id="mobile"
-                    type="tel"
-                    value={formData.mobile}
-                    onChange={(e) => handleChange("mobile", e.target.value)}
-                    placeholder="170 1234567"
-                    maxLength={11}
-                    onlyNumbers
-                  />
-                </div>
-              </div>
-
-              <InputField
-                id="phone"
-                label="Telefon"
-                type="tel"
-                value={formData.telefon}
-                onChange={(e) => handleChange("telefon", e.target.value)}
-                placeholder="089 123456"
-                maxLength={10}
-                onlyNumbers
-              />
-            </div>
-
-            <InputField
-              id="email"
-              label="E-Mail"
-              type="email"
-              value={formData.email}
-              onChange={(e) => {
-                const noSpaces = e.target.value.replace(/\s/g, "");
-                handleChange("email", noSpaces);
-              }}
-              placeholder="beispiel@domain.de"
-              autoComplete="email"
-              autoCapitalize="none"
-              spellCheck={false}
-            />
-
-            <Accordion title="Notfallkontakt">
-              <div className="space-y-3 pt-2">
-                <InputField
-                  id="emergency-name"
-                  label="Name der Kontaktperson"
-                  value={formData.notfall_name}
-                  onChange={(e) => handleChange("notfall_name", e.target.value)}
-                  placeholder="z. B. Maria Mustermann"
-                  onlyLetters
-                />
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <SelectDropdown
-                    id="emergency-relation"
-                    label="Beziehung"
-                    value={formData.notfall_beziehung}
-                    onChange={(e) =>
-                      handleChange("notfall_beziehung", e.target.value)
-                    }
-                    options={RELATIONSHIP_OPTIONS}
-                    placeholder="Beziehung wählen..."
+                    id="salutation"
+                    label="Anrede"
+                    value={formData.anrede}
+                    onChange={(e) => handleChange("anrede", e.target.value)}
+                    options={SALUTATION_OPTIONS}
                   />
 
                   <InputField
-                    id="emergency-phone"
-                    label="Mobil"
-                    type="tel"
-                    value={formData.notfall_mobile}
+                    id="first-name"
+                    label="Vorname"
+                    value={formData.vorname}
+                    onChange={(e) => handleChange("vorname", e.target.value)}
+                    placeholder="Vorname"
+                    required
+                    onlyLetters
+                  />
+
+                  <InputField
+                    id="last-name"
+                    label="Nachname"
+                    value={formData.nachname}
+                    onChange={(e) => handleChange("nachname", e.target.value)}
+                    placeholder="Nachname"
+                    required
+                    onlyLetters
+                  />
+                </div>
+
+                <BirthDatePicker
+                  label="Geburtsdatum"
+                  value={formData.geburtsdatum}
+                  onChange={(val) => handleChange("geburtsdatum", val)}
+                  required
+                />
+
+                <RadioGroup
+                  label="Geschlecht"
+                  hideLabel
+                  name="gender"
+                  value={formData.geschlecht}
+                  onChange={(e) => handleChange("geschlecht", e.target.value)}
+                  options={GENDER_OPTIONS}
+                />
+              </fieldset>
+            )}
+
+            {/* Step 2: Contact Details */}
+            {currentStep === 2 && (
+              <fieldset className="space-y-4 border-0 p-0 m-0">
+                <legend className="app-section-banner">Kontaktdaten</legend>
+
+                <InputField
+                  id="street"
+                  label="Straße & Hausnummer"
+                  value={formData.strasse_hausnummer}
+                  onChange={(e) =>
+                    handleChange("strasse_hausnummer", e.target.value)
+                  }
+                  placeholder="z. B Musterstraße 123"
+                  required
+                />
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <InputField
+                    id="plz"
+                    label="Postleitzahl (PLZ)"
+                    value={formData.postleitzahl}
                     onChange={(e) =>
-                      handleChange("notfall_mobile", e.target.value)
+                      handleChange("postleitzahl", e.target.value)
                     }
-                    placeholder="0151 9876543"
+                    placeholder="12345"
+                    maxLength={5}
+                    onlyNumbers
+                    required
+                  />
+                  <InputField
+                    id="city"
+                    label="Stadt"
+                    value={formData.ort}
+                    onChange={(e) => handleChange("ort", e.target.value)}
+                    placeholder="z. B. München"
+                    onlyLetters
+                    required
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <SelectDropdown
+                    id="country"
+                    label="Land"
+                    value={formData.land}
+                    onChange={(e) => handleChange("land", e.target.value)}
+                    options={COUNTRY_OPTIONS}
+                  />
+
+                  <InputField
+                    id="sector"
+                    label="Sektor"
+                    value={formData.sektor}
+                    onChange={(e) => handleChange("sektor", e.target.value)}
+                    placeholder="Süd"
+                    readOnly
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* Mobile phone input with German country prefix */}
+                  <div className="flex flex-col gap-1.5">
+                    <label
+                      htmlFor="mobile"
+                      className="text-sm font-medium text-black"
+                    >
+                      Mobil
+                    </label>
+                    <div className="flex h-11 rounded-md border border-gray-500 bg-white overflow-hidden focus-within:border-[#0B84CF] focus-within:ring-2 focus-within:ring-[#0B84CF]/25">
+                      <span className="inline-flex items-center gap-1 px-3 border-r border-gray-300 bg-white text-black text-sm select-none">
+                        🇩🇪 +49
+                      </span>
+                      <input
+                        id="mobile"
+                        type="tel"
+                        value={formData.mobile}
+                        onChange={(e) =>
+                          handleChange(
+                            "mobile",
+                            e.target.value.replace(/\D/g, "").slice(0, 11),
+                          )
+                        }
+                        placeholder="170 1234567"
+                        className="w-full px-3 text-base text-black placeholder-[#B8BBBD] focus:outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  <InputField
+                    id="phone"
+                    label="Telefon"
+                    type="tel"
+                    value={formData.telefon}
+                    onChange={(e) => handleChange("telefon", e.target.value)}
+                    placeholder="089 1234567"
+                    maxLength={10}
                     onlyNumbers
                   />
                 </div>
+
+                <InputField
+                  id="email"
+                  label="E-Mail"
+                  type="email"
+                  value={formData.email}
+                  onChange={(e) => {
+                    const noSpaces = e.target.value.replace(/\s/g, "");
+                    handleChange("email", noSpaces);
+                  }}
+                  placeholder="z. B. beispiel@domain.de"
+                  autoComplete="email"
+                  autoCapitalize="none"
+                  spellCheck={false}
+                />
+
+                {/* Collapsible Emergency Contact Section */}
+                <Accordion title="Notfallkontakt">
+                  <div className="space-y-4">
+                    <InputField
+                      id="emergency-street"
+                      label="Straße & Hausnummer"
+                      value={formData.notfall_name}
+                      onChange={(e) =>
+                        handleChange("notfall_name", e.target.value)
+                      }
+                      placeholder="z. B Musterstraße 123"
+                    />
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <SelectDropdown
+                        id="emergency-relation"
+                        label="Beziehung"
+                        value={formData.notfall_beziehung}
+                        onChange={(e) =>
+                          handleChange("notfall_beziehung", e.target.value)
+                        }
+                        options={RELATIONSHIP_OPTIONS}
+                        placeholder="Bitte wählen"
+                      />
+
+                      <div className="flex flex-col gap-1.5">
+                        <label
+                          htmlFor="emergency-phone"
+                          className="text-sm font-medium text-black"
+                        >
+                          Mobil
+                        </label>
+                        <div className="flex h-11 rounded-md border border-gray-500 bg-white overflow-hidden focus-within:border-[#0B84CF] focus-within:ring-2 focus-within:ring-[#0B84CF]/25">
+                          <span className="inline-flex items-center gap-1 px-3 border-r border-gray-300 bg-white text-black text-sm select-none">
+                            🇩🇪 +49
+                          </span>
+                          <input
+                            id="emergency-phone"
+                            type="tel"
+                            value={formData.notfall_mobile}
+                            onChange={(e) =>
+                              handleChange(
+                                "notfall_mobile",
+                                e.target.value.replace(/\D/g, "").slice(0, 11),
+                              )
+                            }
+                            placeholder="170 1234567"
+                            className="w-full px-3 text-base text-black placeholder-[#B8BBBD] focus:outline-none"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </Accordion>
+              </fieldset>
+            )}
+
+            {/* Step 3: Clubhouse Details */}
+            {currentStep === 3 && (
+              <fieldset className="space-y-5 border-0 p-0 m-0">
+                <legend className="app-section-banner">ClubHaus</legend>
+
+                <BirthDatePicker
+                  label="Eintrittsdatum"
+                  value={formData.eintrittsdatum}
+                  onChange={(val) => handleChange("eintrittsdatum", val)}
+                  required
+                />
+
+                <SelectDropdown
+                  id="ori-interview"
+                  label="Orientierungsgespräch geführt von"
+                  value={formData.ori_mitarbeiter}
+                  onChange={(e) =>
+                    handleChange("ori_mitarbeiter", e.target.value)
+                  }
+                  options={STAFF_OPTIONS}
+                  placeholder="Bitte wählen"
+                />
+              </fieldset>
+            )}
+
+            {/* Footer navigation buttons */}
+            <div className="grid grid-cols-2 items-center pt-4">
+              <div className="flex justify-center">
+                {currentStep > 1 && (
+                  <FormButton
+                    type="button"
+                    variant="ghost"
+                    onClick={handlePrevStep}
+                    disabled={isSubmitting}
+                  >
+                    Zurück
+                  </FormButton>
+                )}
               </div>
-            </Accordion>
-          </fieldset>
-        )}
 
-        {/* Step 3: Clubhouse Details */}
-        {currentStep === 3 && (
-          <fieldset className="space-y-4 border-0 p-0 m-0">
-            <legend className="w-full text-xs font-semibold uppercase tracking-wider text-gray-700 bg-gray-100 p-2 rounded-md mb-2">
-              ClubHaus
-            </legend>
-
-            <BirthDatePicker
-              label="Eintrittsdatum"
-              value={formData.eintrittsdatum}
-              onChange={(val) => handleChange("eintrittsdatum", val)}
-              required
-            />
-
-            <SelectDropdown
-              id="ori-interview"
-              label="Orientierungsgespräch geführt von"
-              value={formData.ori_mitarbeiter}
-              onChange={(e) => handleChange("ori_mitarbeiter", e.target.value)}
-              options={STAFF_OPTIONS}
-              placeholder="Mitarbeitenden auswählen..."
-            />
-          </fieldset>
-        )}
-
-        {/* Action buttons */}
-        <div className="flex justify-between items-center pt-4 border-t border-gray-100">
-          {currentStep > 1 ? (
-            <FormButton
-              type="button"
-              variant="secondary"
-              onClick={handlePrevStep}
-              disabled={isSubmitting}
-            >
-              &lt; Zurück
-            </FormButton>
-          ) : (
-            <FormButton
-              type="button"
-              variant="secondary"
-              onClick={onBackToHome}
-              disabled={isSubmitting}
-            >
-              Abbrechen
-            </FormButton>
-          )}
-
-          <FormButton type="submit" variant="dark" disabled={isSubmitting}>
-            {currentStep < 3
-              ? "Weiter >"
-              : isSubmitting
-                ? "Wird gespeichert..."
-                : "Speichern"}
-          </FormButton>
+              <FormButton
+                type="submit"
+                variant="primary"
+                disabled={isSubmitting}
+                className="w-full"
+              >
+                {currentStep < 3
+                  ? "Weiter"
+                  : isSubmitting
+                    ? "Wird gespeichert..."
+                    : "Speichern"}
+              </FormButton>
+            </div>
+          </form>
         </div>
-      </form>
+      </div>
 
+      {/* Figma Success Overlay Card ("Super! Daten erfolgreich gespeichert.") */}
+      {saveSuccess && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div
+            role="status"
+            aria-live="polite"
+            className="bg-white rounded-xl shadow-xl px-10 py-8 text-center max-w-sm w-full"
+          >
+            <div className="w-12 h-12 rounded-full bg-[#0E8B06] text-white flex items-center justify-center mx-auto mb-3">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="3"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="w-6 h-6"
+              >
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+            </div>
+            <h3 className="text-xl font-bold text-[#0E8B06] mb-1">Super!</h3>
+            <p className="text-sm text-black">Daten erfolgreich gespeichert.</p>
+          </div>
+        </div>
+      )}
+
+      {/* Verification modal dialog before final API persistence */}
       <ConfirmationCard
         isOpen={showConfirmation}
-        title="Angaben überprüfen"
+        title="Daten überprüfen"
         items={confirmationItems}
         onCancel={() => setShowConfirmation(false)}
         onConfirm={handleFinalSave}

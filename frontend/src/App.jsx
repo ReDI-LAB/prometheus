@@ -1,82 +1,66 @@
-import { useState, useEffect } from "react";
 import { Routes, Route, Link, useNavigate } from "react-router-dom";
 import HomePage from "./pages/HomePage";
 import BabPage from "./pages/BabPage";
 import PhoneLogPage from "./pages/PhoneLogPage";
 import NewMemberForm from "./pages/NewMemberForm";
-import homeIcon from "./assets/icon.svg";
 import clubhouseLogo from "./assets/logo.png";
 
 /**
  * App Shell Component
- * Configures top-level layout, persistent backend health check, and client routing.
+ * Configures top-level header navigation and client-side routing.
  */
 export default function App() {
-  const [backendStatus, setBackendStatus] = useState("Verbindung prüfen...");
-  const [isBackendOk, setIsBackendOk] = useState(false);
   const navigate = useNavigate();
 
-  // Queries the FastAPI health endpoint on port 8000
-  useEffect(() => {
-    fetch("http://localhost:8000/api/v1/health")
-      .then((res) => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return res.json();
-      })
-      .then((data) => {
-        setBackendStatus(`Verbunden (${data.status || "OK"})`);
-        setIsBackendOk(true);
-      })
-      .catch((err) => {
-        setBackendStatus(`Backend nicht erreichbar: ${err.message}`);
-        setIsBackendOk(false);
-      });
-  }, []);
-
   return (
-    <div className="min-h-screen">
-      {/* Header: Left logo/branding with Link to home, Right Clubhouse title & Backend indicator */}
-      <header className="bg-white border-b border-gray-300 px-8 py-4">
-        <div className="app-container flex items-center justify-between">
+    <div className="min-h-screen flex flex-col">
+      {/* Top White Navigation Bar matching Figma Spec */}
+      <header className="bg-white border-b border-gray-200 px-8 py-4 shadow-2xs">
+        <div className="max-w-6xl mx-auto flex items-center justify-between">
+          {/* Left: Organization Logo linking to Home */}
           <Link
             to="/"
-            className="cursor-pointer flex items-center gap-3 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded-md p-1"
+            className="cursor-pointer flex items-center focus:outline-none rounded-md p-1"
             aria-label="Zurück zur Startseite"
           >
-            <div className="">
-              <img
-                src={clubhouseLogo}
-                alt="ClubHaus Logo"
-                className="h-20 w-auto object-contain"
-              />
-            </div>
-
             <img
-              src={homeIcon}
-              alt="Home icon"
-              className="h-16 w-auto cursor-pointer fill-sky-600 hover:opacity-80 transition-opacity"
+              src={clubhouseLogo}
+              alt="Sozialpsychiatrisches Zentrum München Logo"
+              className="h-14 w-auto object-contain"
             />
           </Link>
 
-          <div className="flex items-center gap-6">
-            {/* Backend connectivity badge */}
-            <div className="flex items-center gap-2 bg-gray-100 px-2.5 py-1 rounded border border-gray-300">
-              <span
-                className={`w-2.5 h-2.5 rounded-full ${
-                  isBackendOk ? "bg-green-500" : "bg-amber-500"
-                }`}
-                aria-hidden="true"
-              />
-              <span className="text-xs font-mono text-gray-700">
-                {backendStatus}
-              </span>
-            </div>
-          </div>
+          {/* Right: Light Blue Home Button (#EAF2FF) with #0B84CF icon & text */}
+          <Link
+            to="/"
+            className="inline-flex items-center gap-2.5 px-5 py-2.5 rounded-lg font-medium text-base transition-all shadow-xs hover:brightness-95"
+            style={{
+              backgroundColor: "var(--color-bg-tint)",
+              color: "var(--color-brand-primary)",
+            }}
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="w-5 h-5"
+              aria-hidden="true"
+            >
+              <path d="M3 10.5L12 3l9 7.5" />
+              <path d="M5 9.5V19a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9.5" />
+              <path d="M9 20v-6a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v6" />
+            </svg>
+            <span>Home</span>
+          </Link>
         </div>
       </header>
 
-      {/* Main semantic area: Declarative routing views */}
-      <main className="app-container py-10">
+      {/* Main Content Area */}
+      <main className="flex-1 app-container w-full py-10">
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route
@@ -91,7 +75,6 @@ export default function App() {
             path="/members/new"
             element={<NewMemberForm onBackToHome={() => navigate("/")} />}
           />
-          {/* Fallback redirect for unknown paths */}
           <Route path="*" element={<HomePage />} />
         </Routes>
       </main>

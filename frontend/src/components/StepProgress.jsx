@@ -1,53 +1,37 @@
 /**
  * StepProgress Component
- * Renders an accessible multi-step progression indicator.
- *
- * @param {Array<{ id: number, label: string }>} steps - List of steps
- * @param {number} currentStep - The currently active step index (1-based)
+ * Renders the 3-step registration indicator matching Sahu's Figma Hi-Fi design.
  */
 export default function StepProgress({ steps = [], currentStep = 1 }) {
   return (
     <nav aria-label="Fortschritt der Registrierung" className="w-full mb-6">
-      <ol className="flex items-center justify-between w-full">
-        {steps.map((step, index) => {
+      <ol className="flex items-center justify-center gap-8 w-full">
+        {steps.map((step) => {
           const isActive = step.id === currentStep;
-          const isCompleted = step.id < currentStep;
 
           return (
             <li
               key={step.id}
               aria-current={isActive ? "step" : undefined}
-              className="flex items-center flex-1 last:flex-none"
+              className="flex items-center gap-2"
             >
-              <div className="flex items-center gap-2">
-                {/* Step circle indicator: Aktiv = Black/dark grey, otherwise a subtle shade of grey */}
-                <span
-                  className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-colors ${
-                    isActive
-                      ? "bg-gray-900 text-white"
-                      : "border border-gray-300 text-gray-400 bg-white"
-                  }`}
-                >
-                  {isCompleted ? "✓" : step.id}
-                </span>
+              <span
+                className={`w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold border-2 transition-colors ${
+                  isActive
+                    ? "border-[#0E8B06] text-[#0E8B06] bg-white"
+                    : "border-[#B8BBBD] text-[#B8BBBD] bg-white"
+                }`}
+              >
+                {step.id}
+              </span>
 
-                {/* Step text label */}
-                <span
-                  className={`text-xs font-medium whitespace-nowrap transition-colors ${
-                    isActive ? "text-gray-900 font-bold" : "text-gray-400"
-                  }`}
-                >
-                  {step.label}
-                </span>
-              </div>
-
-              {/* Connecting line between steps */}
-              {index < steps.length - 1 && (
-                <div
-                  aria-hidden="true"
-                  className="flex-1 h-0.5 mx-3 bg-gray-200"
-                />
-              )}
+              <span
+                className={`text-sm font-semibold whitespace-nowrap transition-colors ${
+                  isActive ? "text-[#0E8B06]" : "text-[#B8BBBD]"
+                }`}
+              >
+                {step.label}
+              </span>
             </li>
           );
         })}

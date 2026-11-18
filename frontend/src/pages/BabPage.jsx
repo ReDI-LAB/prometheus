@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import InputField from "../components/InputField";
 import MemberSearchSelect from "../components/MemberSearchSelect";
 import FormButton from "../components/FormButton";
 import ConfirmationCard from "../components/ConfirmationCard";
+import { CalendarPopover } from "../components/DatePicker";
 import { createAttendance } from "../services/api";
 import { useMembers } from "../context/useMembers";
 
@@ -29,20 +30,20 @@ function getPreviousBusinessDay() {
  *   "09:00" -> "14:30" => "5 Std. 30 Min."
  *   "09:00" -> "14:00" => "5 Std."
  *   "09:00" -> "09:45" => "45 Min."
- *   Invalid / equal   => "0 Std."
+ *   Invalid / equal   => "0 Std. 0 Min."
  *
- * @param {string} arrival - "HH:MM"
- * @param {string} departure - "HH:MM"
+ * @param {string} arrival - Arrival time formatted as "HH:MM"
+ * @param {string} departure - Departure time formatted as "HH:MM"
  * @returns {string} Formatted duration string in German units
  */
 function calculateDuration(arrival, departure) {
-  if (!arrival || !departure) return "0 Std.";
+  if (!arrival || !departure) return "0 Std. 0 Min.";
 
   const [aH, aM] = arrival.split(":").map(Number);
   const [dH, dM] = departure.split(":").map(Number);
 
   const diffMinutes = dH * 60 + dM - (aH * 60 + aM);
-  if (diffMinutes <= 0) return "0 Std.";
+  if (diffMinutes <= 0) return "0 Std. 0 Min.";
 
   const hours = Math.floor(diffMinutes / 60);
   const minutes = diffMinutes % 60;
@@ -75,7 +76,29 @@ export default function BabPage({ onBackToHome }) {
   const [note, setNote] = useState("");
   const [selectedMember, setSelectedMember] = useState(null);
 
-  // Derived calculations: duration and status indicators
+  // --- UI Feedback & Submission States ---
+  const [showConfirmation, setShowConfirmation] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const datePopoverRef = useRef(null);
+
+  // Close calendar popover when clicking outside the date section
+  useEffect(() => {
+    function handleOutside(e) {
+      if (
+        datePopoverRef.current &&
+        !datePopoverRef.current.contains(e.target)
+      ) {
+        setIsEditingDate(false);
+      }
+    }
+    document.addEventListener("mousedown", handleOutside);
+    return () => document.removeEventListener("mousedown", handleOutside);
+  }, []);
+
+  // Derived calculations: live duration, membership status, and monthly attendance count
   const totalHours = calculateDuration(arrival, departure);
   const statusBadge =
     selectedMember?.membership_status || selectedMember?.mitgliedsstatus
@@ -83,23 +106,17 @@ export default function BabPage({ onBackToHome }) {
           selectedMember.membership_status || selectedMember.mitgliedsstatus
         ).toUpperCase()
       : "MO";
-  const attendanceMonthly = "9 / Monat"; // Placeholder attendance counter
-
-  // --- UI Feedback & Submission States ---
-  const [showConfirmation, setShowConfirmation] = useState(false);
-  const [saveSuccess, setSaveSuccess] = useState(false);
-  const [errorMessage, setErrorMessage] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const attendanceMonthly = selectedMember ? "9 / Monat" : "0 / Monat";
 
   /**
-   * Formats ISO date string into German localized date (e.g. "Montag, 01.09.2026").
+   * Formats ISO date string into German localized date (e.g. "Montag, 07.09.2026").
    *
-   * @param {string} dateString - "YYYY-MM-DD"
-   * @returns {string} Localized date string
+   * @param {string} dateString - ISO date formatted as "YYYY-MM-DD"
+   * @returns {string} Localized German date string
    */
   function formatDisplayDate(dateString) {
     if (!dateString) return "";
-    const d = new Date(dateString);
+    const d = new Date(dateString + "T12:00:00");
     return d.toLocaleDateString("de-DE", {
       weekday: "long",
       day: "2-digit",
@@ -109,7 +126,7 @@ export default function BabPage({ onBackToHome }) {
   }
 
   /**
-   * Validates input fields and triggers the verification modal.
+   * Validates input fields and opens the verification modal before saving.
    *
    * @param {React.FormEvent} e - Form submit event
    */
@@ -117,21 +134,23 @@ export default function BabPage({ onBackToHome }) {
     e.preventDefault();
 
     if (!selectedMember) {
-      alert("Bitte wählen Sie ein Mitglied aus.");
+      setErrorMessage("Bitte wählen Sie ein Mitglied aus.");
       return;
     }
 
     // Departure time must strictly follow arrival time
     if (arrival && departure && departure <= arrival) {
-      alert("Die Abgangszeit muss nach der Ankunftszeit liegen.");
+      setErrorMessage("Die Abgangszeit muss nach der Ankunftszeit liegen.");
       return;
     }
 
+    setErrorMessage("");
     setShowConfirmation(true);
   }
 
   /**
    * Executes API persistence call to FastAPI endpoint POST /api/v1/attendance.
+   * Resets member-specific fields while preserving the selected date for batch entry.
    */
   async function handleFinalSave() {
     setShowConfirmation(false);
@@ -139,7 +158,7 @@ export default function BabPage({ onBackToHome }) {
     setIsSubmitting(true);
 
     try {
-      // Resolves both backend UUID schema (member_id) and legacy mock schema (mitglied_id)
+      // Resolve both backend UUID schema (member_id) and legacy mock schema (mitglied_id)
       const memberId = selectedMember.member_id || selectedMember.mitglied_id;
 
       await createAttendance({
@@ -150,8 +169,6 @@ export default function BabPage({ onBackToHome }) {
       });
 
       setSaveSuccess(true);
-
-      // Reset member-specific fields for paper-sheet batch entry; date remains intact
       setSelectedMember(null);
       setNote("");
 
@@ -165,218 +182,249 @@ export default function BabPage({ onBackToHome }) {
     }
   }
 
-  // Resolves member display name across snake_case and camelCase attributes
+  // Resolve member display name across snake_case and legacy attributes
   const memberDisplayName = selectedMember
     ? `${selectedMember.first_name || selectedMember.vorname || ""} ${selectedMember.last_name || selectedMember.nachname || ""}`.trim()
     : "Kein Mitglied ausgewählt";
 
-  // Key-value pairs for the verification modal
+  // Key-value summary rows displayed inside ConfirmationCard
   const confirmationItems = [
     { label: "Datum", value: formatDisplayDate(date) },
-    { label: "Name des Mitglieds", value: memberDisplayName },
-    {
-      label: "Zeiten / Gesamtdauer",
-      value: `${arrival} – ${departure} (${totalHours})`,
-    },
-    {
-      label: "Status / Anwesenheit",
-      value: `${statusBadge} · ${attendanceMonthly}`,
-    },
+    { label: "Mitglied", value: memberDisplayName },
+    { label: "Uhrzeit", value: `${arrival} – ${departure}` },
+    { label: "Gesamtstunden", value: totalHours },
+    { label: "Status", value: statusBadge },
+    { label: "Anwesenheit", value: attendanceMonthly },
   ];
 
   return (
-    <article aria-labelledby="bab-form-heading">
-      <header className="mb-4">
-        <h2 id="bab-form-heading" className="text-lg font-bold text-gray-900">
-          Neuer Anwesenheitseintrag
-        </h2>
-        <p className="text-xs text-gray-500 mt-1">
-          Erfassung von Kommen, Gehen und automatischer Stundenberechnung
-        </p>
+    <article aria-labelledby="bab-form-heading" className="app-card">
+      {/* Dark Blue Header Bar (#05619A) */}
+      <header className="app-card-header">
+        <h2 id="bab-form-heading">Neuer Anwesenheitseintrag</h2>
       </header>
 
-      {/* Success notification banner */}
-      {saveSuccess && (
-        <aside
-          role="status"
-          aria-live="polite"
-          className="mb-4 p-3 bg-green-50 border border-green-200 text-green-800 text-xs rounded-md"
-        >
-          ✓ Anwesenheit erfolgreich im Backend gespeichert!
-        </aside>
-      )}
-
-      {/* Error notification banner */}
-      {errorMessage && (
-        <aside
-          role="alert"
-          aria-live="assertive"
-          className="mb-4 p-3 bg-red-50 border border-red-200 text-red-800 text-xs rounded-md flex justify-between items-center"
-        >
-          <span>✕ {errorMessage}</span>
-          <button
-            type="button"
-            onClick={() => setErrorMessage("")}
-            className="text-red-700 hover:text-red-900 font-bold ml-2 cursor-pointer"
-            aria-label="Fehlermeldung schließen"
+      <div className="p-6 sm:p-8">
+        {/* Success notification banner */}
+        {saveSuccess && (
+          <aside
+            role="status"
+            aria-live="polite"
+            className="mb-4 p-3 bg-green-50 border border-[#0E8B06]/30 text-[#0E8B06] text-xs font-medium rounded-md"
           >
-            ✕
-          </button>
-        </aside>
-      )}
-
-      {/* Date header section with interactive edit toggle */}
-      <section
-        aria-label="Datumsangabe"
-        className="mb-5 pb-3 border-b border-gray-100"
-      >
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-semibold text-gray-800">
-            {formatDisplayDate(date)}
-          </span>
-          <button
-            type="button"
-            onClick={() => setIsEditingDate(!isEditingDate)}
-            className="text-gray-500 hover:text-gray-800 cursor-pointer text-xs"
-            title="Datum ändern"
-            aria-label="Datum manuell anpassen"
-          >
-            ✏️
-          </button>
-        </div>
-        <p className="text-[11px] text-gray-400 mt-0.5">
-          Vorausgefüllt mit dem letzten Werktag
-        </p>
-
-        {isEditingDate && (
-          <div className="mt-2">
-            <input
-              type="date"
-              value={date}
-              onChange={(e) => {
-                setDate(e.target.value);
-                setIsEditingDate(false);
-              }}
-              className="text-xs border border-gray-300 rounded px-2 py-1 outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
+            ✓ Anwesenheit erfolgreich im Backend gespeichert!
+          </aside>
         )}
-      </section>
 
-      {/* Semantic input form */}
-      <form onSubmit={handleFormSubmit} className="space-y-4">
-        {/* Row 1: Searchable member combobox */}
-        <MemberSearchSelect
-          id="member-search"
-          label="Mitglied"
-          members={members}
-          selectedMember={selectedMember}
-          onSelect={(member) => setSelectedMember(member)}
-          placeholder={
-            isLoadingMembers
-              ? "Lade Mitglieder aus Datenbank..."
-              : "Mitglied nach Namen suchen..."
-          }
-          required
-        />
-
-        {/* Row 2: Arrival and Departure grouped in a semantic fieldset */}
-        <fieldset className="grid grid-cols-2 gap-3 border-0 p-0 mb-4">
-          <legend className="sr-only">Anwesenheitszeiten</legend>
-
-          <InputField
-            id="arrival"
-            label="Ankunft"
-            type="time"
-            required
-            value={arrival}
-            onChange={(e) => {
-              const newArrival = e.target.value;
-              setArrival(newArrival);
-              if (departure && departure <= newArrival) {
-                setDeparture("");
-              }
-            }}
-          />
-          <InputField
-            id="departure"
-            label="Abgang"
-            type="time"
-            required
-            value={departure}
-            min={arrival}
-            onChange={(e) => setDeparture(e.target.value)}
-          />
-        </fieldset>
-
-        {arrival && departure && departure <= arrival && (
-          <p
-            className="text-xs text-red-600 font-medium -mt-2 mb-3"
+        {/* Error notification banner */}
+        {errorMessage && (
+          <aside
             role="alert"
+            aria-live="assertive"
+            className="mb-4 p-3 bg-red-50 border border-[#B71D1D]/30 text-[#B71D1D] text-xs font-medium rounded-md flex justify-between items-center"
           >
-            Hinweis: Die Abgangszeit muss nach der Ankunftszeit liegen.
-          </p>
+            <span>✕ {errorMessage}</span>
+            <button
+              type="button"
+              onClick={() => setErrorMessage("")}
+              className="text-[#B71D1D] font-bold ml-2 cursor-pointer"
+              aria-label="Fehlermeldung schließen"
+            >
+              ✕
+            </button>
+          </aside>
         )}
 
-        {/* Row 3: Semantic output elements for live calculated hours and status */}
-        <dl className="space-y-1.5 pt-1 text-sm" aria-live="polite">
-          <div className="flex items-baseline gap-1 font-semibold text-gray-900">
-            <dt>Gesamtdauer:</dt>
-            <dd>
-              <output htmlFor="arrival departure">{totalHours}</output>
-            </dd>
-          </div>
-
-          <div className="flex items-baseline gap-1 text-gray-500">
-            <dt>Status:</dt>
-            <dd className="font-semibold text-gray-900">
-              {statusBadge.charAt(0).toUpperCase() +
-                statusBadge.slice(1).toLowerCase()}
-            </dd>
-          </div>
-
-          <div className="flex items-baseline gap-1 text-gray-500">
-            <dt>Anwesenheiten:</dt>
-            <dd className="font-semibold text-gray-900">{attendanceMonthly}</dd>
-          </div>
-        </dl>
-
-        {/* Row 4: Optional notes textarea */}
-        <div className="flex flex-col gap-1 w-full mt-4">
-          <label
-            htmlFor="bab-note"
-            className="text-sm font-semibold text-gray-800"
+        {/* Inner bordered form container */}
+        <div className="app-form-box">
+          {/* Date header section with interactive calendar popover */}
+          <section
+            ref={datePopoverRef}
+            aria-label="Datumsangabe"
+            className="relative mb-5"
           >
-            Anmerkung
-          </label>
-          <textarea
-            id="bab-note"
-            name="note"
-            rows={3}
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            placeholder="Bei Bedarf eine Anmerkung hinzufügen"
-            aria-describedby="bab-note-hint"
-            className="w-full rounded-md border border-gray-300 p-2.5 text-sm text-gray-900 placeholder-gray-400 bg-white
-              focus:border-blue-500 focus:ring-2 focus:ring-blue-500 focus:outline-none"
-          />
-          <span id="bab-note-hint" className="sr-only">
-            Optionales Freitextfeld für Anmerkungen zur Anwesenheit
-          </span>
-        </div>
+            <div className="flex items-center gap-2">
+              <span className="text-base font-medium text-black">
+                {formatDisplayDate(date)}
+              </span>
+              <button
+                type="button"
+                onClick={() => setIsEditingDate((prev) => !prev)}
+                className="text-[#0B84CF] hover:text-[#05619A] cursor-pointer p-0.5"
+                title="Datum ändern"
+                aria-label="Datum manuell anpassen"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="w-4 h-4"
+                >
+                  <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
+                </svg>
+              </button>
+            </div>
+            <p className="text-xs text-[#5E5E5F] mt-0.5">
+              Vorausgefüllt mit dem letzten Arbeitstag
+            </p>
 
-        {/* Row 5: Action buttons */}
-        <div className="flex justify-between items-center pt-3">
-          <FormButton type="button" variant="secondary" onClick={onBackToHome}>
-            Abbrechen
-          </FormButton>
-          <FormButton type="submit" variant="dark" disabled={isSubmitting}>
-            {isSubmitting ? "Wird gespeichert..." : "Speichern"}
-          </FormButton>
-        </div>
-      </form>
+            {isEditingDate && (
+              <div className="absolute left-0 top-full mt-2 z-40">
+                <CalendarPopover
+                  value={date}
+                  onCancel={() => setIsEditingDate(false)}
+                  onApply={(newIso) => {
+                    setDate(newIso);
+                    setIsEditingDate(false);
+                  }}
+                />
+              </div>
+            )}
+          </section>
 
-      {/* Verification modal card before final persistence */}
+          {/* Semantic attendance entry form */}
+          <form onSubmit={handleFormSubmit} className="space-y-5">
+            {/* Row 1: Searchable member combobox */}
+            <MemberSearchSelect
+              id="member-search"
+              label="Mitglied"
+              members={members}
+              selectedMember={selectedMember}
+              onSelect={(member) => setSelectedMember(member)}
+              placeholder={
+                isLoadingMembers
+                  ? "Lade Mitglieder..."
+                  : "Mitglied nach Name suchen"
+              }
+              required
+            />
+
+            {/* Row 2: Arrival and Departure grouped in a semantic fieldset */}
+            <fieldset className="grid grid-cols-1 sm:grid-cols-2 gap-4 border-0 p-0 m-0">
+              <legend className="sr-only">Anwesenheitszeiten</legend>
+
+              <InputField
+                id="arrival"
+                label="Ankunft"
+                type="time"
+                required
+                value={arrival}
+                onChange={(e) => {
+                  const newArrival = e.target.value;
+                  setArrival(newArrival);
+                  if (departure && departure <= newArrival) {
+                    setDeparture("");
+                  }
+                }}
+              />
+              <InputField
+                id="departure"
+                label="Abgang"
+                type="time"
+                required
+                value={departure}
+                min={arrival}
+                onChange={(e) => setDeparture(e.target.value)}
+              />
+            </fieldset>
+
+            {arrival && departure && departure <= arrival && (
+              <p
+                className="text-xs text-[#B71D1D] font-medium -mt-2"
+                role="alert"
+              >
+                Hinweis: Die Abgangszeit muss nach der Ankunftszeit liegen.
+              </p>
+            )}
+
+            {/* Row 3: Live calculated hours, membership status, and monthly counter */}
+            <dl className="space-y-2.5 pt-1 text-sm" aria-live="polite">
+              <div className="flex items-baseline gap-1.5 text-[#5E5E5F]">
+                <dt>Gesamtdauer:</dt>
+                <dd className="font-semibold text-black">
+                  <output htmlFor="arrival departure">{totalHours}</output>
+                </dd>
+              </div>
+
+              <div className="flex items-center gap-1.5 text-[#5E5E5F]">
+                <dt>Status:</dt>
+                <dd className="font-semibold text-black inline-flex items-center gap-1.5">
+                  <span>
+                    {statusBadge.charAt(0).toUpperCase() +
+                      statusBadge.slice(1).toLowerCase()}
+                  </span>
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className="w-3.5 h-3.5 text-[#0B84CF]"
+                    aria-hidden="true"
+                  >
+                    <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
+                  </svg>
+                </dd>
+              </div>
+
+              <div className="flex items-baseline gap-1.5 text-[#5E5E5F]">
+                <dt>Anwesenheiten:</dt>
+                <dd className="font-semibold text-black">
+                  {attendanceMonthly}
+                </dd>
+              </div>
+            </dl>
+
+            {/* Row 4: Optional notes textarea */}
+            <div className="flex flex-col gap-1.5 w-full">
+              <label
+                htmlFor="bab-note"
+                className="text-sm font-medium text-black"
+              >
+                Anmerkung
+              </label>
+              <textarea
+                id="bab-note"
+                name="note"
+                rows={3}
+                maxLength={500}
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                placeholder="Bei Bedarf eine Anmerkung hinzufügen (max. 500 Zeichen)"
+                className="w-full rounded-md border border-gray-500 p-3 text-base text-black placeholder-[#B8BBBD] bg-white focus:border-[#0B84CF] focus:ring-2 focus:ring-[#0B84CF]/25 focus:outline-none"
+              />
+            </div>
+
+            {/* Row 5: Primary and secondary action buttons */}
+            <div className="grid grid-cols-2 gap-4 pt-3">
+              <FormButton
+                type="button"
+                variant="secondary"
+                onClick={onBackToHome}
+                className="w-full"
+              >
+                Abbrechen
+              </FormButton>
+              <FormButton
+                type="submit"
+                variant="primary"
+                disabled={isSubmitting}
+                className="w-full"
+              >
+                {isSubmitting ? "Wird gespeichert..." : "Speichern"}
+              </FormButton>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      {/* Verification modal dialog before final API persistence */}
       <ConfirmationCard
         isOpen={showConfirmation}
         title="Daten überprüfen"

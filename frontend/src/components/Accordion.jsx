@@ -1,41 +1,38 @@
 import { useState } from "react";
 
-/**
- * Accordion Component
- * Accessible collapsible section for optional details (e.g., Emergency Contact).
- *
- * @param {string} title - Label shown in header
- * @param {boolean} defaultOpen - Initial collapsed/expanded state
- * @param {React.ReactNode} children - Form inputs inside the collapsible drawer
- */
 export default function Accordion({ title, defaultOpen = false, children }) {
   const [isOpen, setIsOpen] = useState(defaultOpen);
   const contentId = `accordion-content-${title.toLowerCase().replace(/\s+/g, "-")}`;
 
   return (
-    <section className="w-full border border-gray-200 rounded-md bg-white overflow-hidden transition-shadow">
-      {/* Header toggle button */}
+    <section className="w-full pt-1">
       <button
         type="button"
         aria-expanded={isOpen}
         aria-controls={contentId}
         onClick={() => setIsOpen((prev) => !prev)}
-        className="w-full flex items-center justify-between p-3.5 bg-gray-50 hover:bg-gray-100 text-left cursor-pointer transition-colors"
+        className="inline-flex items-center gap-2 py-1.5 text-sm font-semibold text-black hover:text-[#0B84CF] cursor-pointer transition-colors"
       >
-        <span className="text-sm font-semibold text-gray-800">{title}</span>
-        <span
+        <span>{title}</span>
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 20 20"
+          fill="currentColor"
           aria-hidden="true"
-          className={`text-gray-500 text-xs transition-transform duration-200 ${
+          className={`w-4 h-4 transition-transform duration-200 ${
             isOpen ? "rotate-180" : "rotate-0"
           }`}
         >
-          ▼
-        </span>
+          <path
+            fillRule="evenodd"
+            d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
+            clipRule="evenodd"
+          />
+        </svg>
       </button>
 
-      {/* Collapsible content drawer */}
       {isOpen && (
-        <div id={contentId} className="p-4 border-t border-gray-200 bg-white">
+        <div id={contentId} className="pt-3 space-y-4">
           {children}
         </div>
       )}

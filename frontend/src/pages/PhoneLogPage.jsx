@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import InputField from "../components/InputField";
 import MemberSearchSelect from "../components/MemberSearchSelect";
 import SelectDropdown from "../components/SelectDropdown";
 import TextareaField from "../components/TextareaField";
 import FormButton from "../components/FormButton";
 import ConfirmationCard from "../components/ConfirmationCard";
+import { CalendarPopover } from "../components/DatePicker";
 import { createPhoneCall } from "../services/api";
 import { useMembers } from "../context/useMembers";
 
@@ -25,7 +26,7 @@ function getPreviousBusinessDay() {
   return lastWorkday.toISOString().split("T")[0];
 }
 
-// Predefined call reason categories (1-5) matching backend topic_code
+// Standardized call reason categories (1-5) matching backend topic_code
 const CALL_REASONS = [
   { value: "1", label: "1 · Schichtanmeldung" },
   { value: "2", label: "2 · Clubhaus-Angelegenheiten" },
@@ -34,7 +35,7 @@ const CALL_REASONS = [
   { value: "5", label: "5 · Begleitgespräch" },
 ];
 
-// Caller identity options
+// Caller identity options matching backend person_type enum
 const CALLER_OPTIONS = [
   { value: "member", label: "Mitglied" },
   { value: "staff", label: "Mitarbeiter" },
@@ -55,7 +56,7 @@ export default function PhoneLogPage({ onBackToHome }) {
   const [date, setDate] = useState(getPreviousBusinessDay);
   const [isEditingDate, setIsEditingDate] = useState(false);
   const [selectedMember, setSelectedMember] = useState(null);
-  const [caller, setCaller] = useState("member");
+  const [caller, setCaller] = useState("");
   const [duration, setDuration] = useState("");
   const [reason, setReason] = useState("");
   const [note, setNote] = useState("");
@@ -66,15 +67,31 @@ export default function PhoneLogPage({ onBackToHome }) {
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
+  const datePopoverRef = useRef(null);
+
+  // Close calendar popover when clicking outside the date section
+  useEffect(() => {
+    function handleOutside(e) {
+      if (
+        datePopoverRef.current &&
+        !datePopoverRef.current.contains(e.target)
+      ) {
+        setIsEditingDate(false);
+      }
+    }
+    document.addEventListener("mousedown", handleOutside);
+    return () => document.removeEventListener("mousedown", handleOutside);
+  }, []);
+
   /**
-   * Formats ISO date string into German localized date (e.g. "Montag, 01.09.2026").
+   * Formats ISO date string into German localized date (e.g. "Montag, 07.09.2026").
    *
-   * @param {string} dateString - "YYYY-MM-DD"
-   * @returns {string} Localized date string
+   * @param {string} dateString - ISO date formatted as "YYYY-MM-DD"
+   * @returns {string} Localized German date string
    */
   function formatDisplayDate(dateString) {
     if (!dateString) return "";
-    const d = new Date(dateString);
+    const d = new Date(dateString + "T12:00:00");
     return d.toLocaleDateString("de-DE", {
       weekday: "long",
       day: "2-digit",
@@ -84,7 +101,7 @@ export default function PhoneLogPage({ onBackToHome }) {
   }
 
   /**
-   * Validates form input fields before opening the confirmation modal.
+   * Validates mandatory form fields before opening the verification modal.
    *
    * @param {React.FormEvent} e - Form submit event
    */
@@ -92,18 +109,25 @@ export default function PhoneLogPage({ onBackToHome }) {
     e.preventDefault();
 
     if (!selectedMember) {
-      alert("Bitte wählen Sie ein Mitglied aus.");
+      setErrorMessage("Bitte wählen Sie ein Mitglied aus.");
+      return;
+    }
+    if (!caller) {
+      setErrorMessage("Bitte wählen Sie aus, wer telefoniert hat.");
       return;
     }
     if (!reason) {
-      alert("Bitte wählen Sie den Grund des Anrufs aus.");
+      setErrorMessage("Bitte wählen Sie den Grund des Anrufs aus.");
       return;
     }
+
+    setErrorMessage("");
     setShowConfirmation(true);
   }
 
   /**
    * Executes API persistence call to FastAPI endpoint POST /api/v1/phone-calls.
+   * Clears caller-specific fields while keeping the selected date intact for batch entry.
    */
   async function handleFinalSave() {
     setShowConfirmation(false);
@@ -121,13 +145,11 @@ export default function PhoneLogPage({ onBackToHome }) {
       });
 
       setSaveSuccess(true);
-
-      // Reset member fields for paper batch entry; preserve date
       setSelectedMember(null);
       setDuration("");
       setReason("");
       setNote("");
-      setCaller("member");
+      setCaller("");
 
       setTimeout(() => {
         setSaveSuccess(false);
@@ -141,181 +163,206 @@ export default function PhoneLogPage({ onBackToHome }) {
     }
   }
 
+  // Lookup German display labels for the verification summary
   const selectedReasonLabel =
     CALL_REASONS.find((r) => r.value === reason)?.label || "Nicht ausgewählt";
   const selectedCallerLabel =
     CALLER_OPTIONS.find((c) => c.value === caller)?.label || caller;
 
+  // Key-value summary rows displayed inside ConfirmationCard
   const confirmationItems = [
     { label: "Datum", value: formatDisplayDate(date) },
     {
       label: "Mitglied",
       value: selectedMember
-        ? `${selectedMember.first_name} ${selectedMember.last_name} (${selectedMember.member_code})`
+        ? `${selectedMember.first_name} ${selectedMember.last_name}`
         : "",
     },
     { label: "Wer telefoniert", value: selectedCallerLabel },
-    { label: "Dauer", value: `${duration} Minuten` },
+    { label: "Dauer (Minuten)", value: String(duration).padStart(2, "0") },
     { label: "Grund des Anrufs", value: selectedReasonLabel },
   ];
 
   return (
-    <article aria-labelledby="phone-log-heading">
-      <header className="mb-4">
-        <h2 id="phone-log-heading" className="text-lg font-bold text-gray-900">
-          Neuer Telefondoku-Eintrag
-        </h2>
-        <p className="text-xs text-gray-500 mt-1">
-          Manuelle Dokumentation von Anrufen (Kategorien 1–5)
-        </p>
+    <article aria-labelledby="phone-log-heading" className="app-card">
+      {/* Dark Blue Header Bar (#05619A) */}
+      <header className="app-card-header">
+        <h2 id="phone-log-heading">Neuer Telefondoku-Eintrag</h2>
       </header>
 
-      {/* Success notification banner */}
-      {saveSuccess && (
-        <aside
-          role="status"
-          aria-live="polite"
-          className="mb-4 p-3 bg-green-50 border border-green-200 text-green-800 text-xs rounded-md"
-        >
-          ✓ Telefondokumentation erfolgreich gespeichert!
-        </aside>
-      )}
-
-      {/* Error notification banner */}
-      {errorMessage && (
-        <aside
-          role="alert"
-          aria-live="assertive"
-          className="mb-4 p-3 bg-red-50 border border-red-200 text-red-800 text-xs rounded-md flex justify-between items-center"
-        >
-          <span>✕ {errorMessage}</span>
-          <button
-            type="button"
-            onClick={() => setErrorMessage("")}
-            className="text-red-700 hover:text-red-900 font-bold ml-2 cursor-pointer"
-            aria-label="Fehlermeldung schließen"
+      <div className="p-6 sm:p-8">
+        {/* Success notification banner */}
+        {saveSuccess && (
+          <aside
+            role="status"
+            aria-live="polite"
+            className="mb-4 p-3 bg-green-50 border border-[#0E8B06]/30 text-[#0E8B06] text-xs font-medium rounded-md"
           >
-            ✕
-          </button>
-        </aside>
-      )}
-
-      {/* Date header section with interactive edit toggle */}
-      <section
-        aria-label="Datumsangabe"
-        className="mb-5 pb-3 border-b border-gray-100"
-      >
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-semibold text-gray-800">
-            Datum: {formatDisplayDate(date)}
-          </span>
-          <button
-            type="button"
-            onClick={() => setIsEditingDate(!isEditingDate)}
-            className="text-gray-500 hover:text-gray-800 cursor-pointer text-xs"
-            title="Datum ändern"
-            aria-label="Datum manuell anpassen"
-          >
-            ✏️
-          </button>
-        </div>
-        <p className="text-[11px] text-gray-400 mt-0.5">
-          Vorausgefüllt mit dem letzten Werktag
-        </p>
-
-        {isEditingDate && (
-          <div className="mt-2">
-            <input
-              type="date"
-              value={date}
-              onChange={(e) => {
-                setDate(e.target.value);
-                setIsEditingDate(false);
-              }}
-              className="text-xs border border-gray-300 rounded px-2 py-1 outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
+            ✓ Telefondokumentation erfolgreich gespeichert!
+          </aside>
         )}
-      </section>
 
-      {/* Semantic input form */}
-      <form onSubmit={handleFormSubmit} className="space-y-4">
-        {/* Row 1: Searchable member combobox */}
-        <MemberSearchSelect
-          id="member-search"
-          label="Mitglied"
-          members={members}
-          selectedMember={selectedMember}
-          onSelect={(member) => setSelectedMember(member)}
-          placeholder={
-            isLoadingMembers
-              ? "Lade Mitglieder..."
-              : "Mitglied nach Name oder Code suchen..."
-          }
-          required
-        />
+        {/* Error notification banner */}
+        {errorMessage && (
+          <aside
+            role="alert"
+            aria-live="assertive"
+            className="mb-4 p-3 bg-red-50 border border-[#B71D1D]/30 text-[#B71D1D] text-xs font-medium rounded-md flex justify-between items-center"
+          >
+            <span>✕ {errorMessage}</span>
+            <button
+              type="button"
+              onClick={() => setErrorMessage("")}
+              className="text-[#B71D1D] font-bold ml-2 cursor-pointer"
+              aria-label="Fehlermeldung schließen"
+            >
+              ✕
+            </button>
+          </aside>
+        )}
 
-        {/* Row 2: Caller and Duration */}
-        <fieldset className="grid grid-cols-2 gap-3 border-0 p-0 m-0">
-          <legend className="sr-only">Anrufdetails</legend>
+        {/* Inner bordered form container */}
+        <div className="app-form-box">
+          {/* Date header section with interactive calendar popover */}
+          <section
+            ref={datePopoverRef}
+            aria-label="Datumsangabe"
+            className="relative mb-5"
+          >
+            <div className="flex items-center gap-2">
+              <span className="text-base font-medium text-black">
+                {formatDisplayDate(date)}
+              </span>
+              <button
+                type="button"
+                onClick={() => setIsEditingDate((prev) => !prev)}
+                className="text-[#0B84CF] hover:text-[#05619A] cursor-pointer p-0.5"
+                title="Datum ändern"
+                aria-label="Datum manuell anpassen"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="w-4 h-4"
+                >
+                  <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
+                </svg>
+              </button>
+            </div>
+            <p className="text-xs text-[#5E5E5F] mt-0.5">
+              Vorausgefüllt mit dem letzten Arbeitstag
+            </p>
 
-          <SelectDropdown
-            id="who-is-calling"
-            label="Wer telefoniert"
-            value={caller}
-            onChange={(e) => setCaller(e.target.value)}
-            options={CALLER_OPTIONS}
-            required
-          />
+            {isEditingDate && (
+              <div className="absolute left-0 top-full mt-2 z-40">
+                <CalendarPopover
+                  value={date}
+                  onCancel={() => setIsEditingDate(false)}
+                  onApply={(newIso) => {
+                    setDate(newIso);
+                    setIsEditingDate(false);
+                  }}
+                />
+              </div>
+            )}
+          </section>
 
-          <InputField
-            id="duration"
-            label="Dauer (Min.)"
-            type="number"
-            min="1"
-            placeholder="z. B. 12"
-            value={duration}
-            onChange={(e) => setDuration(e.target.value)}
-            required
-          />
-        </fieldset>
+          {/* Semantic phone log entry form */}
+          <form onSubmit={handleFormSubmit} className="space-y-5">
+            {/* Row 1: Searchable member combobox */}
+            <MemberSearchSelect
+              id="member-search"
+              label="Mitglied"
+              members={members}
+              selectedMember={selectedMember}
+              onSelect={(member) => setSelectedMember(member)}
+              placeholder={
+                isLoadingMembers
+                  ? "Lade Mitglieder..."
+                  : "Mitglied nach Name suchen"
+              }
+              required
+            />
 
-        {/* Row 3: Call reason category */}
-        <SelectDropdown
-          id="call-reason"
-          label="Grund des Anrufs"
-          placeholder="Bitte Anliegen wählen..."
-          value={reason}
-          onChange={(e) => setReason(e.target.value)}
-          options={CALL_REASONS}
-          required
-        />
+            {/* Row 2: Caller identity and call duration */}
+            <fieldset className="grid grid-cols-1 sm:grid-cols-2 gap-4 border-0 p-0 m-0">
+              <legend className="sr-only">Anrufdetails</legend>
 
-        {/* Row 4: Optional note */}
-        <TextareaField
-          id="note"
-          label="Notiz (optional)"
-          placeholder="Notiz eingeben falls erforderlich..."
-          rows={3}
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-        />
+              <SelectDropdown
+                id="who-is-calling"
+                label="Wer telefoniert"
+                placeholder="bitte wählen"
+                value={caller}
+                onChange={(e) => setCaller(e.target.value)}
+                options={CALLER_OPTIONS}
+                required
+              />
 
-        {/* Row 5: Action buttons */}
-        <div className="flex justify-end gap-3 pt-3">
-          <FormButton variant="secondary" onClick={onBackToHome}>
-            Abbrechen
-          </FormButton>
-          <FormButton type="submit" variant="dark" disabled={isSubmitting}>
-            {isSubmitting ? "Wird gespeichert..." : "Eintrag speichern"}
-          </FormButton>
+              <InputField
+                id="duration"
+                label="Dauer (Minuten)"
+                type="number"
+                min="1"
+                placeholder="z.B. 12"
+                value={duration}
+                onChange={(e) => setDuration(e.target.value)}
+                required
+              />
+            </fieldset>
+
+            {/* Row 3: Call reason category (1-5) */}
+            <SelectDropdown
+              id="call-reason"
+              label="Grund des Anrufs"
+              placeholder="Grund auswählen"
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              options={CALL_REASONS}
+              required
+            />
+
+            {/* Row 4: Optional notes textarea */}
+            <TextareaField
+              id="note"
+              label="Anmerkung"
+              placeholder="Bei Bedarf eine Anmerkung hinzufügen (max. 500 Zeichen)"
+              rows={3}
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+            />
+
+            {/* Row 5: Primary and secondary action buttons */}
+            <div className="grid grid-cols-2 gap-4 pt-3">
+              <FormButton
+                type="button"
+                variant="secondary"
+                onClick={onBackToHome}
+                className="w-full"
+              >
+                Abbrechen
+              </FormButton>
+              <FormButton
+                type="submit"
+                variant="primary"
+                disabled={isSubmitting}
+                className="w-full"
+              >
+                {isSubmitting ? "Wird gespeichert..." : "Speichern"}
+              </FormButton>
+            </div>
+          </form>
         </div>
-      </form>
+      </div>
 
-      {/* Verification modal card before final persistence */}
+      {/* Verification modal dialog before final API persistence */}
       <ConfirmationCard
         isOpen={showConfirmation}
-        title="Angaben überprüfen"
+        title="Daten überprüfen"
         items={confirmationItems}
         onCancel={() => setShowConfirmation(false)}
         onConfirm={handleFinalSave}

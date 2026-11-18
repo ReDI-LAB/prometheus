@@ -1,22 +1,27 @@
+/**
+ * FormButton Component
+ * Standardized button styling matching Sahu's Figma Hi-Fi specification.
+ */
 export default function FormButton({
   children,
   type = "button",
-  variant = "primary", // 'primary' | 'secondary' | 'dark' | 'danger'
+  variant = "primary", // 'primary' | 'secondary' | 'dark' | 'danger' | 'ghost'
   onClick,
   disabled = false,
   className = "",
 }) {
   const baseStyles =
-    "px-5 py-2 text-sm font-medium rounded-md transition-colors cursor-pointer focus:outline-none focus:ring-2";
+    "px-7 py-2.5 text-base font-medium rounded-lg transition-all cursor-pointer focus:outline-none";
 
   const variants = {
     primary:
-      "bg-blue-600 hover:bg-blue-700 text-white focus:ring-blue-400 disabled:bg-blue-300",
-    dark: "bg-neutral-800 hover:bg-neutral-900 text-white focus:ring-neutral-500 disabled:bg-neutral-400",
+      "bg-[#0B84CF] hover:bg-[#05619A] text-white font-semibold shadow-sm disabled:opacity-50",
+    dark: "bg-[#0B84CF] hover:bg-[#05619A] text-white font-semibold shadow-sm disabled:opacity-50",
     secondary:
-      "bg-white hover:bg-gray-100 text-gray-700 border border-gray-300 focus:ring-gray-300 disabled:text-gray-400",
+      "bg-white hover:bg-gray-50 text-black border border-gray-300 shadow-2xs disabled:text-gray-400",
+    ghost: "bg-transparent hover:bg-gray-100 text-black px-3 py-2",
     danger:
-      "bg-red-600 hover:bg-red-700 text-white focus:ring-red-400 disabled:bg-red-300",
+      "bg-[#B71D1D] hover:opacity-90 text-white font-semibold disabled:opacity-50",
   };
 
   return (
@@ -24,7 +29,9 @@ export default function FormButton({
       type={type}
       onClick={onClick}
       disabled={disabled}
-      className={`${baseStyles} ${variants[variant] || variants.primary} ${disabled ? "cursor-not-allowed opacity-60" : ""} ${className}`}
+      className={`${baseStyles} ${variants[variant] || variants.primary} ${
+        disabled ? "cursor-not-allowed" : ""
+      } ${className}`}
     >
       {children}
     </button>
