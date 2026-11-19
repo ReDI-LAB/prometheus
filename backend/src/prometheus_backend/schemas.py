@@ -15,13 +15,30 @@ from pydantic import (
 
 
 class PhoneCallCreate(BaseModel):
-    person_id: uuid.UUID
-    person_type: Literal["member", "staff"]
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "person_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+                    "person_type": "member",
+                    "call_date": "2026-11-19",
+                    "duration_minutes": 15,
+                    "topic_code": 1,
+                    "note": "Short check-in call",
+                }
+            ]
+        }
+    )
+
+    person_id: uuid.UUID = Field(
+        description="Use an id from GET /api/v1/members, or GET /api/v1/staff for a staff caller"
+    )
+    person_type: Literal["member", "staff"] = Field(description="member or staff")
     call_date: date
     duration_minutes: int = Field(gt=0)
     # Not restricted to a Literal/enum of known codes: the database's
     # fk_phone_calls_topic_code foreign key validates this, not Python.
-    topic_code: int
+    topic_code: int = Field(description="Code from GET /api/v1/lookups, call_topics")
     note: str | None = None
 
     @field_validator("note")
@@ -53,7 +70,20 @@ class PhoneCallPage(BaseModel):
 
 
 class AttendanceCreate(BaseModel):
-    member_id: uuid.UUID
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "member_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+                    "attendance_date": "2026-11-19",
+                    "time_in": "09:00",
+                    "time_out": "11:30",
+                }
+            ]
+        }
+    )
+
+    member_id: uuid.UUID = Field(description="Use an id from GET /api/v1/members")
     attendance_date: date
     time_in: time
     time_out: time | None = None
@@ -154,13 +184,40 @@ class EmergencyContactCreate(BaseModel):
     name: Annotated[str, *_required_text(200)]
     phone: Annotated[str, *_required_text(50)]
     # Validated against contact_relationships by the database.
-    relationship: Annotated[str | None, _optional_text(50)] = None
+    relationship: Annotated[str | None, _optional_text(50)] = Field(
+        default=None, description="Code from GET /api/v1/lookups, list contact_relationships"
+    )
 
 
 class MemberCreate(BaseModel):
     # Generated or database-managed columns (member_code, is_member, is_active,
     # anonymized_at, leave_date, timestamps) are rejected rather than ignored.
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={
+            "examples": [
+                {
+                    "first_name": "Test",
+                    "last_name": "Person",
+                    "date_of_birth": "1990-01-01",
+                    "join_date": "2026-11-19",
+                    "salutation": "ms",
+                    "gender": "female",
+                    "phone": "0170 1234567",
+                    "email": "test.person@example.com",
+                    "street_address": "Teststraße 1",
+                    "postal_code": "81539",
+                    "city": "München",
+                    "country": "DE",
+                    "emergency_contact": {
+                        "name": "Anna Person",
+                        "phone": "0170 7654321",
+                        "relationship": "mother",
+                    },
+                }
+            ]
+        },
+    )
 
     first_name: Annotated[str, *_required_text(100)]
     last_name: Annotated[str, *_required_text(100)]
@@ -168,15 +225,26 @@ class MemberCreate(BaseModel):
     join_date: date
     # salutation, gender and country are validated against their lookup
     # tables by the database.
-    salutation: Annotated[str | None, _optional_text(50)] = None
-    gender: Annotated[str | None, _optional_text(50)] = None
+    salutation: Annotated[str | None, _optional_text(50)] = Field(
+        default=None, description="Code from GET /api/v1/lookups, list salutations"
+    )
+    gender: Annotated[str | None, _optional_text(50)] = Field(
+        default=None, description="Code from GET /api/v1/lookups, list genders"
+    )
     phone: Annotated[str | None, _optional_text(50)] = None
     email: Annotated[str | None, _optional_text(254)] = None
     street_address: Annotated[str | None, _optional_text(200)] = None
-    postal_code: Annotated[str | None, _optional_text(20)] = None
+    postal_code: Annotated[str | None, _optional_text(20)] = Field(
+        default=None,
+        description="One of the Munich postal codes in GET /api/v1/lookups (sectors), or omit",
+    )
     city: Annotated[str | None, _optional_text(100)] = None
-    country: Annotated[str | None, _optional_text(50)] = None
-    clubhouse_id: uuid.UUID | None = None
+    country: Annotated[str | None, _optional_text(50)] = Field(
+        default=None, description="Code from GET /api/v1/lookups, list countries"
+    )
+    clubhouse_id: uuid.UUID | None = Field(
+        default=None, description="Optional; used only when several clubhouses exist"
+    )
     emergency_contact: EmergencyContactCreate | None = None
 
 
