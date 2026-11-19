@@ -140,11 +140,19 @@ Local URLs:
 | GET    | `/api/v1/phone-calls` | List phone calls, filterable by person and date range       |
 | POST   | `/api/v1/attendance`  | Log a member's attendance (time in, optional time out)      |
 | GET    | `/api/v1/attendance`  | List attendance entries, filterable by member and date range |
+| GET    | `/api/v1/attendance/summary` | Attendance counters for one member (`visits`, `days_attended`, `total_minutes`, `open_entries`) for a month or date range |
 | POST   | `/api/v1/members`     | Create a member, optionally with one emergency contact |
 | GET    | `/api/v1/members`     | List members for a selector, with search, `is_active` filter and paging |
 | GET    | `/api/v1/lookups`     | All lookup lists (salutations, genders, countries, contact relationships, caller types, call topics, sectors) |
 | GET    | `/api/v1/clubhouses`  | List clubhouses, ordered by name |
 | GET    | `/api/v1/staff`       | List staff (names, role, clubhouse, status), filterable by clubhouse and status, with paging |
+
+`GET /api/v1/attendance/summary` needs `member_id` and takes either `month` (`YYYY-MM`) or `date_from` and/or `date_to`; combining `month` with a date is `422`. Without any of them it uses the current calendar month of the server's date. The date window rules are the same as for the attendance list (at most 366 days, `date_from` not after `date_to`), and an unknown member returns `404`. The counters are:
+
+- `visits`: the number of attendance entries in the window.
+- `days_attended`: the number of distinct days with at least one entry.
+- `total_minutes`: the total of `time_out` minus `time_in` over the entries that have a `time_out`, in whole minutes (rounded down once at the end), or `0`.
+- `open_entries`: the entries without a `time_out`; they are not counted in `total_minutes`.
 
 The `code` values returned by `GET /api/v1/lookups` are the values the create endpoints expect: `salutation`, `gender`, `country` and the emergency contact `relationship` for `POST /api/v1/members`, and `person_type` and `topic_code` (an integer) for `POST /api/v1/phone-calls`. The code/label lists are ordered by `sort_order`. The `sectors` list has a different shape (`postal_code`, `sector`, `city`, `country`) and is ordered by `postal_code`; its `postal_code` values are the ones `POST /api/v1/members` accepts. `GET /api/v1/staff` never includes email or other contact details and omits anonymized people; `staff_status` is matched exactly.
 

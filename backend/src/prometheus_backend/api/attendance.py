@@ -1,3 +1,4 @@
+import calendar
 import uuid
 from datetime import date, timedelta
 from typing import Annotated
@@ -7,8 +8,13 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 
 from prometheus_backend.database import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, SessionDep
-from prometheus_backend.models import Attendance
-from prometheus_backend.schemas import AttendanceCreate, AttendancePage, AttendanceRead
+from prometheus_backend.models import Attendance, Member
+from prometheus_backend.schemas import (
+    AttendanceCreate,
+    AttendancePage,
+    AttendanceRead,
+    AttendanceSummary,
+)
 
 router = APIRouter(prefix="/api/v1/attendance", tags=["attendance"])
 
@@ -94,4 +100,81 @@ async def list_attendance(
         total=total or 0,
         limit=limit,
         offset=offset,
+    )
+
+
+@router.get("/summary", summary="Attendance counters for a member")
+async def attendance_summary(
+    session: SessionDep,
+    member_id: uuid.UUID,
+    month: Annotated[
+        str | None,
+        Query(
+            pattern=r"^\d{4}-(0[1-9]|1[0-2])$",
+            description="Calendar month as YYYY-MM. Cannot be combined with date_from or date_to.",
+        ),
+    ] = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+) -> AttendanceSummary:
+    """Counts a member's attendance entries in a window: the given month, the given
+    date_from/date_to, or the current calendar month when nothing is given (the date of the
+    server clock). The window rules are the same as for the attendance list."""
+    if month is not None and (date_from is not None or date_to is not None):
+        raise HTTPException(
+            status_code=422, detail="month cannot be combined with date_from or date_to"
+        )
+
+    if month is not None:
+        try:
+            year, month_number = (int(part) for part in month.split("-"))
+            resolved_date_from = date(year, month_number, 1)
+            resolved_date_to = date(year, month_number, calendar.monthrange(year, month_number)[1])
+        except ValueError:
+            raise HTTPException(status_code=422, detail="month is not a valid month") from None
+    elif date_from is None and date_to is None:
+        today = date.today()
+        resolved_date_from = today.replace(day=1)
+        resolved_date_to = today.replace(day=calendar.monthrange(today.year, today.month)[1])
+    else:
+        resolved_date_to = date_to or date.today()
+        resolved_date_from = date_from or (
+            resolved_date_to - timedelta(days=DEFAULT_DATE_RANGE_DAYS)
+        )
+
+    if resolved_date_from > resolved_date_to:
+        raise HTTPException(status_code=422, detail="date_from must not be after date_to")
+    if (resolved_date_to - resolved_date_from).days > MAX_DATE_RANGE_DAYS:
+        raise HTTPException(
+            status_code=422, detail=f"date range must not exceed {MAX_DATE_RANGE_DAYS} days"
+        )
+
+    if await session.scalar(select(Member.member_id).where(Member.member_id == member_id)) is None:
+        raise HTTPException(status_code=404, detail="Member not found")
+
+    # One aggregate over the attendance parent table; filtering on attendance_date
+    # lets Postgres prune the monthly partitions.
+    seconds = func.sum(func.extract("epoch", Attendance.time_out - Attendance.time_in))
+    row = (
+        await session.execute(
+            select(
+                func.count().label("visits"),
+                func.count(func.distinct(Attendance.attendance_date)).label("days_attended"),
+                func.coalesce(func.floor(seconds / 60), 0).label("total_minutes"),
+                func.count().filter(Attendance.time_out.is_(None)).label("open_entries"),
+            ).where(
+                Attendance.member_id == member_id,
+                Attendance.attendance_date >= resolved_date_from,
+                Attendance.attendance_date <= resolved_date_to,
+            )
+        )
+    ).one()
+    return AttendanceSummary(
+        member_id=member_id,
+        date_from=resolved_date_from,
+        date_to=resolved_date_to,
+        visits=row.visits,
+        days_attended=row.days_attended,
+        total_minutes=int(row.total_minutes),
+        open_entries=row.open_entries,
     )

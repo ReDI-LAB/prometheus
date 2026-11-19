@@ -76,6 +76,21 @@ class AttendanceRead(BaseModel):
     created_at: datetime
 
 
+class AttendanceSummary(BaseModel):
+    member_id: uuid.UUID
+    date_from: date = Field(description="First day of the counted window.")
+    date_to: date = Field(description="Last day of the counted window, inclusive.")
+    visits: int = Field(description="Number of attendance entries in the window.")
+    days_attended: int = Field(description="Number of distinct days with at least one entry.")
+    total_minutes: int = Field(
+        description="Total of time_out minus time_in over the entries that have a time_out, "
+        "in whole minutes (rounded down once at the end); 0 when there are none."
+    )
+    open_entries: int = Field(
+        description="Entries without a time_out; they are not counted in total_minutes."
+    )
+
+
 class AttendancePage(BaseModel):
     items: list[AttendanceRead]
     total: int
