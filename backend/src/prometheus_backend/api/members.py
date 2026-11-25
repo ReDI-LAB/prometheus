@@ -35,6 +35,7 @@ _FOREIGN_KEY_MESSAGES = {
     "fk_members_gender": "Unknown gender",
     "fk_members_country": "Unknown country",
     "fk_members_postal_code": "Unknown postal_code",
+    "fk_members_ori_interviewer": "Unknown ori_interviewer_id",
     "fk_emergency_contacts_relationship": "Unknown emergency_contact.relationship",
 }
 

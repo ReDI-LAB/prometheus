@@ -213,6 +213,7 @@ class MemberCreate(BaseModel):
                     "salutation": "ms",
                     "gender": "female",
                     "phone": "0170 1234567",
+                    "landline_phone": "089 1234567",
                     "email": "test.person@example.com",
                     "street_address": "Teststraße 1",
                     "postal_code": "81539",
@@ -240,7 +241,17 @@ class MemberCreate(BaseModel):
     gender: Annotated[str | None, _optional_text(50)] = Field(
         default=None, description="Code from GET /api/v1/lookups, list genders"
     )
-    phone: Annotated[str | None, _optional_text(50)] = None
+    phone: Annotated[str | None, _optional_text(50)] = Field(
+        default=None, description="Mobile number (optional)"
+    )
+    landline_phone: Annotated[str | None, _optional_text(50)] = Field(
+        default=None, description="Landline number (optional)"
+    )
+    # Validated against staff by the database (fk_members_ori_interviewer).
+    ori_interviewer_id: uuid.UUID | None = Field(
+        default=None,
+        description="Staff id of the ORI interviewer; choose it from GET /api/v1/staff",
+    )
     email: Annotated[str | None, _optional_text(254)] = None
     street_address: Annotated[str | None, _optional_text(200)] = None
     postal_code: Annotated[str | None, _optional_text(20)] = Field(
