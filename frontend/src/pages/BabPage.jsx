@@ -1,10 +1,17 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import InputField from "../components/InputField";
 import MemberSearchSelect from "../components/MemberSearchSelect";
 import FormButton from "../components/FormButton";
 import ConfirmationCard from "../components/ConfirmationCard";
+import { CalendarPopover } from "../components/DatePicker";
+import { createAttendance, fetchAttendanceSummary } from "../services/api";
+import { useMembers } from "../context/useMembers";
 
-// Helper: Calculate previous business day (Mon-Fri) synchronously
+/**
+ * Calculates previous business day (Monday through Friday) synchronously.
+ *
+ * @returns {string} Date formatted as YYYY-MM-DD
+ */
 function getPreviousBusinessDay() {
   const today = new Date();
   const day = today.getDay(); // 0 = Sunday, 1 = Monday
@@ -17,285 +24,537 @@ function getPreviousBusinessDay() {
   return lastWorkday.toISOString().split("T")[0];
 }
 
-// Helper: Calculate duration between arrival and departure times
+/**
+ * Calculates human-readable duration in hours and minutes.
+ *
+ * @param {string} arrival - Arrival time formatted as "HH:MM"
+ * @param {string} departure - Departure time formatted as "HH:MM"
+ * @returns {string} Formatted duration string in German units
+ */
 function calculateDuration(arrival, departure) {
-  if (!arrival || !departure) return "0.0";
+  if (!arrival || !departure) return "0 Std. 0 Min.";
+
   const [aH, aM] = arrival.split(":").map(Number);
   const [dH, dM] = departure.split(":").map(Number);
+
   const diffMinutes = dH * 60 + dM - (aH * 60 + aM);
-  return diffMinutes > 0 ? (diffMinutes / 60).toFixed(1) : "0.0";
+  if (diffMinutes <= 0) return "0 Std. 0 Min.";
+
+  const hours = Math.floor(diffMinutes / 60);
+  const minutes = diffMinutes % 60;
+
+  if (hours > 0 && minutes > 0) {
+    return `${hours} Std. ${minutes} Min.`;
+  }
+  if (hours > 0) {
+    return `${hours} Std.`;
+  }
+  return `${minutes} Min.`;
 }
 
-export default function BabPage({ onBackToHome }) {
+/**
+ * BabPage Component
+ * Form for daily attendance logging (BAB), connected to MemberContext and attendance summary API.
+ */
+export default function BabPage() {
+  const { members, isLoading: isLoadingMembers } = useMembers();
+
   // --- Form Input States ---
   const [date, setDate] = useState(getPreviousBusinessDay);
   const [isEditingDate, setIsEditingDate] = useState(false);
   const [arrival, setArrival] = useState("09:00");
   const [departure, setDeparture] = useState("14:00");
   const [note, setNote] = useState("");
-
-  // Tracks selected member from MemberSearchSelect
   const [selectedMember, setSelectedMember] = useState(null);
+  const [monthlyVisits, setMonthlyVisits] = useState(null);
 
-  // Derived state: Live total hours calculation
-  const totalHours = calculateDuration(arrival, departure);
+  // Manual status override state (e.g. "Mo" or "M")
+  const [statusOverride, setStatusOverride] = useState(null);
+  const [isEditingStatus, setIsEditingStatus] = useState(false);
 
-  // Status badge derived from selected member or default placeholder
-  const statusBadge = selectedMember?.mitgliedsstatus
-    ? selectedMember.mitgliedsstatus.toUpperCase()
-    : "MO";
-  const attendanceMonthly = "9 / Monat"; // Attendance count this month (placeholder)
+  // Undo snapshot after clicking "Abbrechen"
+  const [undoSnapshot, setUndoSnapshot] = useState(null);
 
-  // --- Modal & Feedback States ---
+  // --- UI Feedback & Submission States ---
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Mock member records matching the backend SQLAlchemy table structure
-  const memberList = [
-    {
-      mitglied_id: "a1b2c3d4-0001-4000-8000-000000000001",
-      mitgliedscode: "M-101",
-      vorname: "Jane",
-      nachname: "Doe",
-      mitgliedsstatus: "mo",
-    },
-    {
-      mitglied_id: "a1b2c3d4-0002-4000-8000-000000000002",
-      mitgliedscode: "M-102",
-      vorname: "Max",
-      nachname: "Mustermann",
-      mitgliedsstatus: "m",
-    },
-    {
-      mitglied_id: "a1b2c3d4-0003-4000-8000-000000000003",
-      mitgliedscode: "M-103",
-      vorname: "Erika",
-      nachname: "Musterfrau",
-      mitgliedsstatus: "mo",
-    },
-  ];
+  // Fetch real monthly visit counter whenever a member or month changes
+  useEffect(() => {
+    const memberId = selectedMember?.member_id || selectedMember?.mitglied_id;
+    if (!memberId) return;
 
-  // Format date display for German locale (e.g., "Montag, 01.09.2026")
+    let isMounted = true;
+    const monthParam = date ? date.slice(0, 7) : null;
+
+    fetchAttendanceSummary(memberId, monthParam)
+      .then((summary) => {
+        if (isMounted && typeof summary?.visits === "number") {
+          setMonthlyVisits(summary.visits);
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setMonthlyVisits(null);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [selectedMember, date]);
+
+  // Derived calculations: live duration, membership status (M vs. MO), and monthly counter
+  const totalHours = calculateDuration(arrival, departure);
+
+  const computedStatusBadge =
+    typeof selectedMember?.is_member === "boolean"
+      ? selectedMember.is_member
+        ? "M"
+        : "MO"
+      : selectedMember?.membership_status || selectedMember?.mitgliedsstatus
+        ? (
+            selectedMember.membership_status || selectedMember.mitgliedsstatus
+          ).toUpperCase()
+        : "MO";
+
+  const statusBadge =
+    statusOverride !== null ? statusOverride : computedStatusBadge;
+
+  const formattedStatusLabel =
+    statusBadge.length === 1
+      ? statusBadge.toUpperCase()
+      : statusBadge.charAt(0).toUpperCase() +
+        statusBadge.slice(1).toLowerCase();
+
+  const attendanceMonthly =
+    selectedMember && monthlyVisits !== null
+      ? `${monthlyVisits} / Monat`
+      : "0 / Monat";
+
+  /**
+   * Formats ISO date string into German localized date (e.g. "Montag, 07.09.2026").
+   *
+   * @param {string} dateString - ISO date formatted as "YYYY-MM-DD"
+   * @returns {string} Localized German date string
+   */
   function formatDisplayDate(dateString) {
     if (!dateString) return "";
-    const d = new Date(dateString);
-    const options = {
+    const d = new Date(dateString + "T12:00:00");
+    return d.toLocaleDateString("de-DE", {
       weekday: "long",
       day: "2-digit",
       month: "2-digit",
       year: "numeric",
-    };
-    return d.toLocaleDateString("de-DE", options);
+    });
   }
 
-  // Intercept submit event to validate and open verification modal
+  /**
+   * Clears current inputs and stores a snapshot so the user can restore via "Rückgängig".
+   */
+  function handleClearWithUndo() {
+    setUndoSnapshot({
+      date,
+      arrival,
+      departure,
+      note,
+      selectedMember,
+      monthlyVisits,
+      statusOverride,
+    });
+    setSelectedMember(null);
+    setMonthlyVisits(null);
+    setStatusOverride(null);
+    setIsEditingStatus(false);
+    setArrival("09:00");
+    setDeparture("14:00");
+    setNote("");
+    setErrorMessage("");
+  }
+
+  /**
+   * Restores the form state captured before clicking "Abbrechen".
+   */
+  function handleUndoRestore() {
+    if (!undoSnapshot) return;
+    setDate(undoSnapshot.date);
+    setArrival(undoSnapshot.arrival);
+    setDeparture(undoSnapshot.departure);
+    setNote(undoSnapshot.note);
+    setSelectedMember(undoSnapshot.selectedMember);
+    setMonthlyVisits(undoSnapshot.monthlyVisits);
+    setStatusOverride(undoSnapshot.statusOverride);
+    setUndoSnapshot(null);
+  }
+
+  /**
+   * Validates input fields and opens the verification modal before saving.
+   *
+   * @param {React.FormEvent} e - Form submit event
+   */
   function handleFormSubmit(e) {
     e.preventDefault();
+
     if (!selectedMember) {
-      alert("Bitte wählen Sie ein Mitglied aus.");
+      setErrorMessage("Bitte wählen Sie ein Mitglied aus.");
       return;
     }
+
+    if (arrival && departure && departure <= arrival) {
+      setErrorMessage("Die Abgangszeit muss nach der Ankunftszeit liegen.");
+      return;
+    }
+
+    setErrorMessage("");
     setShowConfirmation(true);
   }
 
-  // Execute submission feedback, reset inputs, and stay on the form
-  function handleFinalSave() {
+  /**
+   * Executes API persistence call to FastAPI endpoint POST /api/v1/attendance.
+   * Resets member-specific fields while preserving the selected date for batch entry.
+   */
+  async function handleFinalSave() {
     setShowConfirmation(false);
-    setSaveSuccess(true);
+    setErrorMessage("");
+    setIsSubmitting(true);
 
-    // Reset member-specific fields for the next entry
-    setSelectedMember(null);
-    setNote("");
+    try {
+      const memberId = selectedMember.member_id || selectedMember.mitglied_id;
 
-    // Hide the green success badge after 3 seconds
-    setTimeout(() => {
-      setSaveSuccess(false);
-    }, 3000);
+      await createAttendance({
+        member_id: memberId,
+        attendance_date: date,
+        time_in: arrival,
+        time_out: departure || null,
+        note,
+      });
+
+      setSaveSuccess(true);
+      setUndoSnapshot(null);
+      setSelectedMember(null);
+      setMonthlyVisits(null);
+      setStatusOverride(null);
+      setIsEditingStatus(false);
+      setNote("");
+
+      setTimeout(() => {
+        setSaveSuccess(false);
+      }, 3000);
+    } catch (error) {
+      setErrorMessage(error.message);
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
-  // Prepare key-value items for the confirmation card
+  const memberDisplayName = selectedMember
+    ? `${selectedMember.first_name || selectedMember.vorname || ""} ${selectedMember.last_name || selectedMember.nachname || ""}`.trim()
+    : "Kein Mitglied ausgewählt";
+
   const confirmationItems = [
     { label: "Datum", value: formatDisplayDate(date) },
-    {
-      label: "Name des Mitglieds",
-      value: selectedMember
-        ? `${selectedMember.vorname} ${selectedMember.nachname} (${selectedMember.mitgliedscode})`
-        : "Kein Mitglied ausgewählt",
-    },
-    {
-      label: "Zeiten / Gesamtstunden",
-      value: `${arrival} – ${departure} (${totalHours} Std.)`,
-    },
-    {
-      label: "Status / Anwesenheit",
-      value: `${statusBadge} · ${attendanceMonthly}`,
-    },
+    { label: "Mitglied", value: memberDisplayName },
+    { label: "Uhrzeit", value: `${arrival} – ${departure}` },
+    { label: "Gesamtstunden", value: totalHours },
+    { label: "Status", value: statusBadge.toUpperCase() },
+    { label: "Anwesenheit", value: attendanceMonthly },
   ];
 
   return (
-    <article
-      aria-labelledby="bab-form-heading"
-      className="max-w-md mx-auto bg-white rounded-2xl shadow-md border border-gray-200 p-8"
-    >
-      <header className="mb-4">
-        <h2 id="bab-form-heading" className="text-lg font-bold text-gray-900">
-          Neuer Anwesenheitseintrag
-        </h2>
-        <p className="text-xs text-gray-500 mt-1">
-          Erfassung von Kommen, Gehen und automatischer Stundenberechnung
-        </p>
+    <article aria-labelledby="bab-form-heading" className="app-card">
+      {/* Dark Blue Header Bar (#05619A) */}
+      <header className="app-card-header">
+        <h2 id="bab-form-heading">Neuer Anwesenheitseintrag</h2>
       </header>
 
-      {saveSuccess && (
-        <aside
-          role="status"
-          aria-live="polite"
-          className="mb-4 p-3 bg-green-50 border border-green-200 text-green-800 text-xs rounded-md"
-        >
-          ✓ Anwesenheit erfolgreich gespeichert!
-        </aside>
-      )}
-
-      {/* Date row with semantic section and accessible edit button */}
-      <section
-        aria-label="Datumsangabe"
-        className="mb-5 pb-3 border-b border-gray-100"
-      >
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-semibold text-gray-800">
-            {formatDisplayDate(date)}
-          </span>
-          <button
-            type="button"
-            onClick={() => setIsEditingDate(!isEditingDate)}
-            className="text-gray-500 hover:text-gray-800 cursor-pointer text-xs"
-            title="Datum ändern"
-            aria-label="Datum manuell anpassen"
+      <div className="p-6 sm:p-8">
+        {errorMessage && (
+          <aside
+            role="alert"
+            aria-live="assertive"
+            className="mb-4 p-3 bg-red-50 border border-[#B71D1D]/30 text-[#B71D1D] text-xs font-medium rounded-md flex justify-between items-center"
           >
-            ✏️
-          </button>
-        </div>
-        <p className="text-[11px] text-gray-400 mt-0.5">
-          Vorausgefüllt mit dem letzten Werktag
-        </p>
+            <span>✕ {errorMessage}</span>
+            <button
+              type="button"
+              onClick={() => setErrorMessage("")}
+              className="text-[#B71D1D] font-bold ml-2 cursor-pointer"
+              aria-label="Fehlermeldung schließen"
+            >
+              ✕
+            </button>
+          </aside>
+        )}
 
-        {isEditingDate && (
-          <div className="mt-2">
-            <input
-              type="date"
-              value={date}
-              onChange={(e) => {
-                setDate(e.target.value);
-                setIsEditingDate(false);
+        {/* Inner bordered form container */}
+        <div className="app-form-box">
+          {/* Date header section with calendar overlay trigger */}
+          <section aria-label="Datumsangabe" className="mb-5">
+            <div className="flex items-center gap-2">
+              <span className="text-base font-medium text-black">
+                {formatDisplayDate(date)}
+              </span>
+              <button
+                type="button"
+                onClick={() => setIsEditingDate((prev) => !prev)}
+                className="text-[#0B84CF] hover:text-[#05619A] cursor-pointer p-0.5"
+                title="Datum ändern"
+                aria-label="Datum manuell anpassen"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="w-4 h-4"
+                >
+                  <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
+                </svg>
+              </button>
+            </div>
+            <p className="text-xs text-[#5E5E5F] mt-0.5">
+              Vorausgefüllt mit dem letzten Arbeitstag
+            </p>
+
+            {isEditingDate && (
+              <CalendarPopover
+                value={date}
+                onCancel={() => setIsEditingDate(false)}
+                onApply={(newIso) => {
+                  setDate(newIso);
+                  setIsEditingDate(false);
+                }}
+              />
+            )}
+          </section>
+
+          <form onSubmit={handleFormSubmit} className="space-y-5">
+            <MemberSearchSelect
+              id="member-search"
+              label="Mitglied"
+              members={members}
+              selectedMember={selectedMember}
+              onSelect={(member) => {
+                setSelectedMember(member);
+                setStatusOverride(null);
+                setIsEditingStatus(false);
+                setUndoSnapshot(null);
+                if (!member) setMonthlyVisits(null);
               }}
-              className="text-xs border border-gray-300 rounded px-2 py-1 outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder={
+                isLoadingMembers
+                  ? "Lade Mitglieder..."
+                  : "Mitglied nach Name suchen"
+              }
+              required
             />
+
+            <fieldset className="grid grid-cols-1 sm:grid-cols-2 gap-4 border-0 p-0 m-0">
+              <legend className="sr-only">Anwesenheitszeiten</legend>
+
+              <InputField
+                id="arrival"
+                label="Ankunft"
+                type="time"
+                required
+                value={arrival}
+                onChange={(e) => {
+                  const newArrival = e.target.value;
+                  setArrival(newArrival);
+                  if (departure && departure <= newArrival) {
+                    setDeparture("");
+                  }
+                }}
+              />
+              <InputField
+                id="departure"
+                label="Abgang"
+                type="time"
+                required
+                value={departure}
+                min={arrival}
+                onChange={(e) => setDeparture(e.target.value)}
+              />
+            </fieldset>
+
+            {arrival && departure && departure <= arrival && (
+              <p
+                className="text-xs text-[#B71D1D] font-medium -mt-2"
+                role="alert"
+              >
+                Hinweis: Die Abgangszeit muss nach der Ankunftszeit liegen.
+              </p>
+            )}
+
+            <dl className="space-y-2.5 pt-1 text-sm" aria-live="polite">
+              <div className="flex items-baseline gap-1.5 text-[#5E5E5F]">
+                <dt>Gesamtdauer:</dt>
+                <dd className="font-semibold text-black">
+                  <output htmlFor="arrival departure">{totalHours}</output>
+                </dd>
+              </div>
+
+              <div className="flex flex-col gap-1 text-[#5E5E5F]">
+                <div className="flex items-center gap-1.5">
+                  <dt>Status:</dt>
+                  {!isEditingStatus && (
+                    <dd className="font-semibold text-black inline-flex items-center gap-1.5">
+                      <span>{formattedStatusLabel}</span>
+                      <button
+                        type="button"
+                        onClick={() => setIsEditingStatus(true)}
+                        className="text-[#0B84CF] hover:text-[#05619A] cursor-pointer p-0.5"
+                        title="Status bearbeiten"
+                        aria-label="Mitgliedsstatus bearbeiten"
+                      >
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          className="w-3.5 h-3.5"
+                        >
+                          <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
+                        </svg>
+                      </button>
+                    </dd>
+                  )}
+                </div>
+
+                {isEditingStatus && (
+                  <div className="max-w-xs">
+                    <input
+                      type="text"
+                      aria-label="Status eingeben (z. B. Mo oder M)"
+                      value={statusOverride ?? formattedStatusLabel}
+                      onChange={(e) => setStatusOverride(e.target.value)}
+                      onBlur={() => setIsEditingStatus(false)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          setIsEditingStatus(false);
+                        }
+                      }}
+                      autoFocus
+                      maxLength={10}
+                      className="h-9 w-full rounded-md border-2 border-[#0B84CF] px-3 text-sm font-semibold text-black bg-white focus:outline-none"
+                    />
+                  </div>
+                )}
+              </div>
+
+              <div className="flex items-baseline gap-1.5 text-[#5E5E5F]">
+                <dt>Anwesenheiten:</dt>
+                <dd className="font-semibold text-black">
+                  {attendanceMonthly}
+                </dd>
+              </div>
+            </dl>
+
+            <div className="flex flex-col gap-1.5 w-full">
+              <label
+                htmlFor="bab-note"
+                className="text-sm font-medium text-black"
+              >
+                Anmerkung
+              </label>
+              <textarea
+                id="bab-note"
+                name="note"
+                rows={3}
+                maxLength={500}
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                placeholder="Bei Bedarf eine Anmerkung hinzufügen (max. 500 Zeichen)"
+                className="w-full rounded-md border border-gray-500 p-3 text-base text-black placeholder-[#B8BBBD] bg-white focus:border-[#0B84CF] focus:ring-2 focus:ring-[#0B84CF]/25 focus:outline-none"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4 pt-3">
+              <FormButton
+                type="button"
+                variant="secondary"
+                onClick={handleClearWithUndo}
+                className="w-full"
+              >
+                Abbrechen
+              </FormButton>
+              <FormButton
+                type="submit"
+                variant="primary"
+                disabled={isSubmitting}
+                className="w-full"
+              >
+                {isSubmitting ? "Wird gespeichert..." : "Speichern"}
+              </FormButton>
+            </div>
+          </form>
+        </div>
+
+        {/* Floating "Rückgängig" Pill Toast after clicking Abbrechen */}
+        {undoSnapshot && (
+          <div className="flex justify-center mt-5">
+            <div
+              role="status"
+              aria-live="polite"
+              className="inline-flex items-center gap-3 bg-white border border-gray-300 shadow-md rounded-md px-4 py-2 text-sm font-semibold text-black"
+            >
+              <button
+                type="button"
+                onClick={handleUndoRestore}
+                className="hover:text-[#0B84CF] cursor-pointer"
+              >
+                Rückgängig
+              </button>
+              <button
+                type="button"
+                onClick={() => setUndoSnapshot(null)}
+                aria-label="Hinweis schließen"
+                className="text-gray-600 hover:text-black cursor-pointer text-xs"
+              >
+                ✕
+              </button>
+            </div>
           </div>
         )}
-      </section>
+      </div>
 
-      {/* Semantic Form */}
-      <form onSubmit={handleFormSubmit} className="space-y-4">
-        {/* Row 1: Searchable Member Selection */}
-        <MemberSearchSelect
-          id="member-search"
-          label="Mitglied"
-          members={memberList}
-          selectedMember={selectedMember}
-          onSelect={(member) => setSelectedMember(member)}
-          placeholder="Mitglied nach Namen suchen..."
-          required
-        />
-
-        {/* Row 2: Arrival & Departure grouped in a fieldset */}
-        <fieldset className="grid grid-cols-2 gap-3 border-0 p-0 mb-4">
-          <legend className="sr-only">Anwesenheitszeiten</legend>
-
-          <InputField
-            id="arrival"
-            label="Ankunft"
-            type="time"
-            required
-            value={arrival}
-            onChange={(e) => setArrival(e.target.value)}
-          />
-          <InputField
-            id="departure"
-            label="Abgang"
-            type="time"
-            required
-            value={departure}
-            onChange={(e) => setDeparture(e.target.value)}
-          />
-        </fieldset>
-
-        {/* Row 3: Semantic Output for calculated hours and metadata */}
-
-        <dl className="space-y-1.5 pt-1 text-sm" aria-live="polite">
-          {/* Zeile 1: Gesamtdauer */}
-          <div className="flex items-baseline gap-1 font-semibold text-gray-900">
-            <dt>Gesamtdauer:</dt>
-            <dd>
-              <output htmlFor="arrival departure">
-                {Number(totalHours) > 0
-                  ? `${totalHours.replace(".0", "")} Std.`
-                  : "0 Std."}
-              </output>
-            </dd>
-          </div>
-
-          {/* Mitgliedsstatus */}
-          <div className="flex items-baseline gap-1 text-gray-500">
-            <dt>Status:</dt>
-            <dd className="font-semibold text-gray-900">
-              {statusBadge.charAt(0).toUpperCase() +
-                statusBadge.slice(1).toLowerCase()}
-            </dd>
-          </div>
-
-          {/* Monatszähler */}
-          <div className="flex items-baseline gap-1 text-gray-500">
-            <dt>Anwesenheiten:</dt>
-            <dd className="font-semibold text-gray-900">{attendanceMonthly}</dd>
-          </div>
-        </dl>
-
-        {/* Row 4: Optional notes */}
-        <div className="flex flex-col gap-1 w-full mt-4">
-          <label
-            htmlFor="bab-note"
-            className="text-sm font-semibold text-gray-800"
+      {/* Figma Success Overlay Card */}
+      {saveSuccess && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div
+            role="status"
+            aria-live="polite"
+            className="bg-white rounded-xl shadow-xl px-10 py-8 text-center max-w-sm w-full"
           >
-            Anmerkung
-          </label>
-          <textarea
-            id="bab-note"
-            name="note"
-            rows={3}
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            placeholder="Bei Bedarf eine Anmerkung hinzufügen"
-            aria-describedby="bab-note-hint"
-            className="w-full rounded-md border border-gray-300 p-2.5 text-sm text-gray-900 placeholder-gray-400 bg-white
-              focus:border-blue-500 focus:ring-2 focus:ring-blue-500 focus:outline-none"
-          />
-          <span id="bab-note-hint" className="sr-only">
-            Optionales Freitextfeld für Anmerkungen zur Anwesenheit
-          </span>
+            <div className="w-12 h-12 rounded-full bg-[#0E8B06] text-white flex items-center justify-center mx-auto mb-3">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="3"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="w-6 h-6"
+              >
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+            </div>
+            <h3 className="text-xl font-bold text-[#0E8B06] mb-1">Super!</h3>
+            <p className="text-sm text-black">Daten erfolgreich gespeichert.</p>
+          </div>
         </div>
+      )}
 
-        {/* Row 5: Action buttons */}
-        <div className="flex justify-end gap-3 pt-3">
-          <FormButton variant="secondary" onClick={onBackToHome}>
-            Abbrechen
-          </FormButton>
-          <FormButton type="submit" variant="dark">
-            Speichern
-          </FormButton>
-        </div>
-      </form>
-
-      {/* Confirmation Modal */}
       <ConfirmationCard
         isOpen={showConfirmation}
         title="Daten überprüfen"

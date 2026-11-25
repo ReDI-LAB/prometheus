@@ -3,14 +3,15 @@ export default function TextareaField({
   id,
   value,
   onChange,
-  placeholder = "Optionale Notiz...",
+  placeholder = "Bei Bedarf eine Anmerkung hinzufügen (max. 500 Zeichen)",
   rows = 3,
+  maxLength = 500,
   ...props
 }) {
   return (
-    <div className="flex flex-col gap-1 w-full">
+    <div className="flex flex-col gap-1.5 w-full">
       {label && (
-        <label htmlFor={id} className="text-sm font-medium text-gray-700">
+        <label htmlFor={id} className="text-sm font-medium text-black">
           {label}
         </label>
       )}
@@ -20,8 +21,9 @@ export default function TextareaField({
         value={value}
         onChange={onChange}
         rows={rows}
+        maxLength={maxLength}
         placeholder={placeholder}
-        className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-xs transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+        className="w-full rounded-md border border-gray-500 px-3.5 py-2.5 text-base text-black placeholder-[#B8BBBD] bg-white transition-colors focus:border-[#0B84CF] focus:ring-2 focus:ring-[#0B84CF]/25 focus:outline-none"
         {...props}
       />
     </div>

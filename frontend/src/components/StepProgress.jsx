@@ -1,53 +1,62 @@
 /**
  * StepProgress Component
- * Renders an accessible multi-step progression indicator.
+ * Renders an accessible multi-step progression indicator with optional click navigation.
  *
- * @param {Array<{ id: number, label: string }>} steps - List of steps
- * @param {number} currentStep - The currently active step index (1-based)
+ * @param {Object} props
+ * @param {Array<{ id: number, label: string }>} props.steps - Ordered list of wizard steps
+ * @param {number} props.currentStep - Currently active step ID (1-based)
+ * @param {Function} [props.onStepClick] - Optional callback fired with target step ID when clicked
  */
-export default function StepProgress({ steps = [], currentStep = 1 }) {
+export default function StepProgress({
+  steps = [],
+  currentStep = 1,
+  onStepClick,
+}) {
   return (
     <nav aria-label="Fortschritt der Registrierung" className="w-full mb-6">
-      <ol className="flex items-center justify-between w-full">
-        {steps.map((step, index) => {
+      <ol className="flex items-center justify-center gap-4 sm:gap-8 w-full">
+        {steps.map((step) => {
           const isActive = step.id === currentStep;
-          const isCompleted = step.id < currentStep;
+          const isInteractive = typeof onStepClick === "function";
 
           return (
             <li
               key={step.id}
               aria-current={isActive ? "step" : undefined}
-              className="flex items-center flex-1 last:flex-none"
+              className="flex items-center"
             >
-              <div className="flex items-center gap-2">
-                {/* Step circle indicator: Aktiv = Black/dark grey, otherwise a subtle shade of grey */}
+              <button
+                type="button"
+                disabled={!isInteractive}
+                onClick={() => isInteractive && onStepClick(step.id)}
+                className={`flex items-center gap-2 focus:outline-none ${
+                  isInteractive
+                    ? "cursor-pointer hover:opacity-80"
+                    : "cursor-default"
+                }`}
+              >
+                {/* Step circle indicator */}
                 <span
-                  className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-colors ${
+                  className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold transition-colors ${
                     isActive
-                      ? "bg-gray-900 text-white"
-                      : "border border-gray-300 text-gray-400 bg-white"
+                      ? "border-2 border-[#0E8B06] text-[#0E8B06] bg-white"
+                      : "border border-[#84888B] text-[#84888B] bg-white"
                   }`}
                 >
-                  {isCompleted ? "✓" : step.id}
+                  {step.id}
                 </span>
 
                 {/* Step text label */}
                 <span
-                  className={`text-xs font-medium whitespace-nowrap transition-colors ${
-                    isActive ? "text-gray-900 font-bold" : "text-gray-400"
+                  className={`text-xs sm:text-sm whitespace-nowrap transition-colors ${
+                    isActive
+                      ? "text-[#0E8B06] font-semibold"
+                      : "text-[#84888B] font-medium"
                   }`}
                 >
                   {step.label}
                 </span>
-              </div>
-
-              {/* Connecting line between steps */}
-              {index < steps.length - 1 && (
-                <div
-                  aria-hidden="true"
-                  className="flex-1 h-0.5 mx-3 bg-gray-200"
-                />
-              )}
+              </button>
             </li>
           );
         })}

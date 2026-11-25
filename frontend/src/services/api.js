@@ -1,0 +1,299 @@
+/**
+ * API Service for Project Prometheus
+ * Connects frontend forms to FastAPI backend endpoints.
+ */
+
+// Base URL pointing to local FastAPI backend
+const API_BASE_URL = "http://localhost:8000/api/v1";
+
+/**
+ * Custom error class capturing HTTP status and backend detail
+ */
+export class ApiError extends Error {
+  constructor(message, status, detail = null) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.detail = detail;
+  }
+}
+
+/**
+ * Helper to extract error message details from FastAPI response body
+ */
+async function extractErrorMessage(response) {
+  try {
+    const errorData = await response.json();
+    if (typeof errorData.detail === "string") {
+      return errorData.detail;
+    }
+    if (Array.isArray(errorData.detail)) {
+      // Pydantic validation errors (array of field issues)
+      return errorData.detail
+        .map((err) => `${err.loc.join(".")}: ${err.msg}`)
+        .join(", ");
+    }
+    if (errorData.detail) {
+      return JSON.stringify(errorData.detail);
+    }
+    return JSON.stringify(errorData);
+  } catch {
+    return response.statusText || "Unbekannter Serverfehler";
+  }
+}
+
+/**
+ * Helper to handle HTTP errors, parsing FastAPI JSON responses {"detail": "..."}
+ */
+async function handleResponse(response) {
+  if (response.ok) {
+    return response.json();
+  }
+
+  const errorDetail = await extractErrorMessage(response);
+
+  switch (response.status) {
+    case 422:
+      throw new ApiError(
+        `Ungültige Eingabedaten (422): ${errorDetail}`,
+        422,
+        errorDetail,
+      );
+    case 500:
+      throw new ApiError(
+        `Server- / Datenbankfehler (500): ${errorDetail || "Interner Serverfehler"}`,
+        500,
+        errorDetail,
+      );
+    case 503:
+      throw new ApiError(
+        "Datenbank ist derzeit nicht erreichbar (503). Bitte später erneut versuchen.",
+        503,
+        errorDetail,
+      );
+    default:
+      throw new ApiError(
+        `Serverfehler (${response.status}): ${errorDetail}`,
+        response.status,
+        errorDetail,
+      );
+  }
+}
+
+/**
+ * Fetches the active member list from the backend database.
+ *
+ * @returns {Promise<Array>} List of member objects
+ */
+export async function fetchMembers() {
+  try {
+    const response = await fetch(`${API_BASE_URL}/members`);
+    const data = await handleResponse(response);
+    return Array.isArray(data) ? data : data.items || [];
+  } catch (error) {
+    if (error instanceof ApiError) {
+      throw error;
+    }
+    throw new ApiError(
+      "Keine Verbindung zum Backend möglich. Bitte prüfen, ob FastAPI auf Port 8000 läuft.",
+      0,
+      error.message,
+    );
+  }
+}
+
+/**
+ * Submit daily attendance entry (BAB)
+ *
+ * @param {Object} payload
+ * @param {string} payload.member_id - UUID of the member
+ * @param {string} payload.attendance_date - Date in format YYYY-MM-DD
+ * @param {string} payload.time_in - Arrival time in format HH:MM
+ * @param {string} [payload.time_out] - Departure time in format HH:MM (optional)
+ * @returns {Promise<Object>} Created attendance record
+ */
+export async function createAttendance({
+  member_id,
+  attendance_date,
+  time_in,
+  time_out,
+  note,
+}) {
+  try {
+    const response = await fetch(`${API_BASE_URL}/attendance`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        member_id,
+        attendance_date,
+        time_in,
+        time_out: time_out || null,
+        note: note ? note.trim() : null,
+      }),
+    });
+
+    return await handleResponse(response);
+  } catch (error) {
+    if (error instanceof ApiError) {
+      throw error;
+    }
+    throw new ApiError(
+      "Keine Verbindung zum Backend möglich. Bitte prüfen, ob FastAPI auf Port 8000 läuft.",
+      0,
+      error.message,
+    );
+  }
+}
+
+/**
+ * Submit phone log call entry
+ *
+ * @param {Object} payload
+ * @param {string} payload.person_id - UUID of the member or staff
+ * @param {'member'|'staff'} payload.person_type - Type of caller
+ * @param {string} payload.call_date - Date in format YYYY-MM-DD
+ * @param {number} payload.duration_minutes - Positive integer
+ * @param {number} payload.topic_code - Topic code integer (1-5)
+ * @param {string} [payload.note] - Optional freeform note
+ * @returns {Promise<Object>} Created phone call record
+ */
+export async function createPhoneCall({
+  person_id,
+  person_type,
+  call_date,
+  duration_minutes,
+  topic_code,
+  note,
+}) {
+  try {
+    const response = await fetch(`${API_BASE_URL}/phone-calls`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        person_id,
+        person_type,
+        call_date,
+        duration_minutes: Number(duration_minutes),
+        topic_code: Number(topic_code),
+        note: note ? note.trim() : null,
+      }),
+    });
+
+    return await handleResponse(response);
+  } catch (error) {
+    if (error instanceof ApiError) {
+      throw error;
+    }
+    throw new ApiError(
+      "Keine Verbindung zum Backend möglich. Bitte prüfen, ob FastAPI auf Port 8000 läuft.",
+      0,
+      error.message,
+    );
+  }
+}
+
+/**
+ * Register a new member in the database.
+ *
+ * @param {Object} memberData - Member master data matching backend schema
+ * @returns {Promise<Object>} Created member record
+ */
+export async function createMember(memberData) {
+  try {
+    const response = await fetch(`${API_BASE_URL}/members`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(memberData),
+    });
+
+    return await handleResponse(response);
+  } catch (error) {
+    if (error instanceof ApiError) {
+      throw error;
+    }
+    throw new ApiError(
+      "Keine Verbindung zum Backend möglich. Bitte prüfen, ob FastAPI läuft.",
+      0,
+      error.message,
+    );
+  }
+}
+/**
+ * Fetches all lookup dictionaries (salutations, genders, countries,
+ * contact relationships, caller types, call topics, and Munich postal sectors).
+ *
+ * @returns {Promise<Object>} Object containing lookup arrays from GET /api/v1/lookups
+ */
+export async function fetchLookups() {
+  try {
+    const response = await fetch(`${API_BASE_URL}/lookups`);
+    return await handleResponse(response);
+  } catch (error) {
+    if (error instanceof ApiError) {
+      throw error;
+    }
+    throw new ApiError(
+      "Keine Verbindung zum Backend möglich. Bitte prüfen, ob FastAPI auf Port 8000 läuft.",
+      0,
+      error.message,
+    );
+  }
+}
+
+/**
+ * Fetches active staff members for dropdown selection (e.g. ORI interviewer).
+ *
+ * @returns {Promise<Array>} List of staff summary objects
+ */
+export async function fetchStaff() {
+  try {
+    const response = await fetch(`${API_BASE_URL}/staff?staff_status=active`);
+    const data = await handleResponse(response);
+    return Array.isArray(data) ? data : data.items || [];
+  } catch (error) {
+    if (error instanceof ApiError) {
+      throw error;
+    }
+    throw new ApiError(
+      "Keine Verbindung zum Backend möglich. Bitte prüfen, ob FastAPI auf Port 8000 läuft.",
+      0,
+      error.message,
+    );
+  }
+}
+
+/**
+ * Fetches monthly attendance counters (visits, days_attended, total_minutes)
+ * for a single member from GET /api/v1/attendance/summary.
+ *
+ * @param {string} memberId - UUID of the member
+ * @param {string} [month] - Optional YYYY-MM filter (defaults to current month on server)
+ * @returns {Promise<Object>} Attendance summary object
+ */
+export async function fetchAttendanceSummary(memberId, month = null) {
+  try {
+    const params = new URLSearchParams({ member_id: memberId });
+    if (month) {
+      params.set("month", month);
+    }
+    const response = await fetch(
+      `${API_BASE_URL}/attendance/summary?${params.toString()}`,
+    );
+    return await handleResponse(response);
+  } catch (error) {
+    if (error instanceof ApiError) {
+      throw error;
+    }
+    throw new ApiError(
+      "Keine Verbindung zum Backend möglich. Bitte prüfen, ob FastAPI auf Port 8000 läuft.",
+      0,
+      error.message,
+    );
+  }
+}

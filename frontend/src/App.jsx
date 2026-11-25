@@ -1,85 +1,94 @@
-import { useState, useEffect } from "react";
+import { Routes, Route, Link, useNavigate } from "react-router-dom";
 import HomePage from "./pages/HomePage";
 import BabPage from "./pages/BabPage";
 import PhoneLogPage from "./pages/PhoneLogPage";
 import NewMemberForm from "./pages/NewMemberForm";
-import homeIcon from "./assets/icon.svg";
 import clubhouseLogo from "./assets/logo.png";
 
+/**
+ * App Shell Component
+ * Configures top-level header navigation and client-side routing.
+ */
 export default function App() {
-  // Current active view: 'home' | 'bab' | 'phone' | 'new-member'
-  const [currentPage, setCurrentPage] = useState("home");
-  const [backendStatus, setBackendStatus] = useState("Verbindung prüfen...");
-  const [isBackendOk, setIsBackendOk] = useState(false);
-
-  useEffect(() => {
-    // Queries the FastAPI health endpoint on port 8000
-    fetch("http://127.0.0.1:8000/api/v1/health")
-      .then((res) => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return res.json();
-      })
-      .then((data) => {
-        setBackendStatus(`Verbunden (${data.status || "OK"})`);
-        setIsBackendOk(true);
-      })
-      .catch((err) => {
-        setBackendStatus(`Backend nicht erreichbar: ${err.message}`);
-        setIsBackendOk(false);
-      });
-  }, []);
+  const navigate = useNavigate();
 
   return (
-    <div className="min-h-screen bg-gray-200 text-gray-900 font-sans">
-      {/* Header: Left logo/branding, Right Clubhouse title & Backend indicator */}
-      <header className="bg-gray-300 border-b border-gray-400 px-8 py-8">
-        <div className="max-w-5xl mx-auto flex items-center justify-center gap-32">
-          <div
-            onClick={() => setCurrentPage("home")}
-            className="cursor-pointer flex flex-col items-start gap-1"
+    <div className="min-h-screen flex flex-col">
+      {/* Top White Navigation Bar matching Figma Spec */}
+      <header className="bg-white border-b border-gray-200 px-8 py-4 shadow-2xs">
+        <div className="max-w-6xl mx-auto flex items-center justify-between">
+          {/* Left: Organization Logo linking to Home */}
+          <Link
+            to="/"
+            className="cursor-pointer flex items-center focus:outline-none rounded-md p-1"
+            aria-label="Zurück zur Startseite"
           >
-            <div className="flex items-center gap-2">
-              <img src={homeIcon} alt="Home icon" className="h-14 w-14" />
-              <img
-                src={clubhouseLogo}
-                alt="ClubHaus Logo"
-                className="h-20 w-auto object-contain"
-              />
-            </div>
-            <h1 className="text-xl font-semibold text-gray-800">
-              ClubHaus München Giesing
-            </h1>
-          </div>
+            <img
+              src={clubhouseLogo}
+              alt="Sozialpsychiatrisches Zentrum München Logo"
+              className="h-14 w-auto object-contain"
+            />
+          </Link>
 
-          <div className="flex items-center gap-6">
-            {/* Backend connectivity badge */}
-            <div className="flex items-center gap-2 bg-gray-100 px-2.5 py-1 rounded border border-gray-300">
-              <span
-                className={`w-2.5 h-2.5 rounded-full ${
-                  isBackendOk ? "bg-green-500" : "bg-amber-500"
-                }`}
-                aria-hidden="true"
-              />
-              <span className="text-xs font-mono text-gray-700">
-                {backendStatus}
-              </span>
-            </div>
-          </div>
+          {/* Right: Light Blue Home Button (#EAF2FF) with #0B84CF icon & text */}
+          <Link
+            to="/"
+            className="inline-flex items-center gap-2.5 px-5 py-2.5 rounded-lg font-medium text-base transition-all shadow-xs hover:brightness-95"
+            style={{
+              backgroundColor: "var(--color-bg-tint)",
+              color: "var(--color-brand-primary)",
+            }}
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="w-5 h-5"
+              aria-hidden="true"
+            >
+              <path d="M3 10.5L12 3l9 7.5" />
+              <path d="M5 9.5V19a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9.5" />
+              <path d="M9 20v-6a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v6" />
+            </svg>
+            <span>Home</span>
+          </Link>
         </div>
       </header>
 
-      {/* Main semantic area: Swapping views instead of static text */}
-      <main className="max-w-5xl mx-auto px-8 py-10">
-        {currentPage === "home" && <HomePage onNavigate={setCurrentPage} />}
-        {currentPage === "bab" && (
-          <BabPage onBackToHome={() => setCurrentPage("home")} />
-        )}
-        {currentPage === "phone" && (
-          <PhoneLogPage onBackToHome={() => setCurrentPage("home")} />
-        )}
-        {currentPage === "new-member" && (
-          <NewMemberForm onBackToHome={() => setCurrentPage("home")} />
-        )}
+      {/* Main Content Area (full-width so HomePage background spans edge-to-edge) */}
+      <main className="flex-1 w-full flex flex-col">
+        <Routes>
+          <Route path="/" element={<HomePage />} />
+          <Route
+            path="/bab"
+            element={
+              <div className="app-container w-full py-10">
+                <BabPage onBackToHome={() => navigate("/")} />
+              </div>
+            }
+          />
+          <Route
+            path="/phone-log"
+            element={
+              <div className="app-container w-full py-10">
+                <PhoneLogPage onBackToHome={() => navigate("/")} />
+              </div>
+            }
+          />
+          <Route
+            path="/members/new"
+            element={
+              <div className="app-container w-full py-10">
+                <NewMemberForm onBackToHome={() => navigate("/")} />
+              </div>
+            }
+          />
+          <Route path="*" element={<HomePage />} />
+        </Routes>
       </main>
     </div>
   );

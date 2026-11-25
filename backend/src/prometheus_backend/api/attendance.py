@@ -34,7 +34,7 @@ def _map_integrity_error(exc: IntegrityError) -> tuple[int, str]:
 
 @router.post("", status_code=201)
 async def create_attendance(payload: AttendanceCreate, session: SessionDep) -> AttendanceRead:
-    # The database updates the related member's activity_status and
+    # The database refreshes the related member's is_active and
     # updated_at as a side effect of this insert (see the Attendance
     # class docstring in models.py); this endpoint does not re-read or
     # report that, so a client should re-read the member separately.
