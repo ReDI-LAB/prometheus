@@ -17,9 +17,9 @@ export default function HomePage() {
       className="flex-1 w-full bg-cover bg-center bg-no-repeat flex flex-col items-center justify-center px-6 py-12"
       style={{ backgroundImage: `url(${homeBg})` }}
     >
-      {/* Welcome Headline & Subtitle matching Figma */}
+      {/* Welcome Headline & Subtitle*/}
       <div className="text-center mb-10">
-        <h1 className="text-3xl sm:text-4xl font-bold text-[#05619A] tracking-tight mb-2">
+        <h1 className="text-10xl sm:text-4xl font-bold text-[#05619A] tracking-tight mb-2">
           Willkommen im Team-Portal
         </h1>
         <p className="text-lg sm:text-xl font-medium text-black">

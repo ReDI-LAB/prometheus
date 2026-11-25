@@ -30,7 +30,7 @@ html,
 body {
   min-height: 100vh;
   background-color: var(--color-bg-page);
-  color: var(--color-text-primary);
+  color: var(--color-brand-dark);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -46,10 +46,10 @@ body {
 
 /* 4. Global Typography Scale (Figma Spec) */
 h1 {
-  font-size: 1.5rem; /* 24px - Headline 2 */
-  line-height: 2rem;
+  font-size: 2.5rem; /* 24px - Headline 2 */
+  line-height: 4rem;
   font-weight: 600;
-  color: var(--color-text-primary);
+  color: var(----color-brand-dark);
   letter-spacing: -0.02em;
 }
 
