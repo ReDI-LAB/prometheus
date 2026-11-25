@@ -59,21 +59,33 @@ export default function App() {
         </div>
       </header>
 
-      {/* Main Content Area */}
-      <main className="flex-1 app-container w-full py-10">
+      {/* Main Content Area (full-width so HomePage background spans edge-to-edge) */}
+      <main className="flex-1 w-full flex flex-col">
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route
             path="/bab"
-            element={<BabPage onBackToHome={() => navigate("/")} />}
+            element={
+              <div className="app-container w-full py-10">
+                <BabPage onBackToHome={() => navigate("/")} />
+              </div>
+            }
           />
           <Route
             path="/phone-log"
-            element={<PhoneLogPage onBackToHome={() => navigate("/")} />}
+            element={
+              <div className="app-container w-full py-10">
+                <PhoneLogPage onBackToHome={() => navigate("/")} />
+              </div>
+            }
           />
           <Route
             path="/members/new"
-            element={<NewMemberForm onBackToHome={() => navigate("/")} />}
+            element={
+              <div className="app-container w-full py-10">
+                <NewMemberForm onBackToHome={() => navigate("/")} />
+              </div>
+            }
           />
           <Route path="*" element={<HomePage />} />
         </Routes>

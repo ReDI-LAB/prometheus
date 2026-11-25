@@ -1,31 +1,43 @@
 /**
  * ActionCard Component
- * Accessible dashboard navigation card matching Sahu's Figma Hi-Fi design.
+ * Renders a Figma-styled navigation card with a header photo, overlapping icon badge,
+ * title, and subtitle.
  *
  * @param {Object} props
- * @param {string} props.title - Main card title in primary brand blue
- * @param {string} props.subtitle - Secondary descriptive subtitle
- * @param {React.ReactNode} props.icon - SVG icon element rendered above the title
- * @param {Function} props.onClick - Navigation callback fired on button click
+ * @param {string} props.title - Primary card heading
+ * @param {string} props.subtitle - Secondary descriptive text
+ * @param {string} props.image - Card header image URL
+ * @param {React.ReactNode} props.icon - SVG icon rendered inside the centered badge
+ * @param {Function} props.onClick - Click handler callback
  */
-export default function ActionCard({ title, subtitle, icon, onClick }) {
+export default function ActionCard({ title, subtitle, image, icon, onClick }) {
   return (
-    <li>
+    <li className="w-full sm:w-72">
       <button
         type="button"
         onClick={onClick}
-        className="w-64 h-60 bg-white hover:bg-[#EAF2FF]/60 rounded-2xl px-6 py-8 flex flex-col items-center justify-center text-center cursor-pointer transition-all shadow-sm hover:shadow-md border border-white hover:border-[#0B84CF]/30"
-        style={{ color: "var(--color-brand-primary)" }}
+        className="w-full h-full bg-white rounded-xl p-4 pb-6 border-2 border-transparent hover:border-[#0B84CF] shadow-md hover:shadow-lg transition-all duration-150 cursor-pointer flex flex-col items-center text-center focus:outline-none focus:border-[#0B84CF]"
       >
-        <div className="mb-4" aria-hidden="true">
-          {icon}
+        {/* Top Photo + Overlapping White Icon Badge */}
+        <div className="relative w-full mb-7">
+          <img
+            src={image}
+            alt=""
+            aria-hidden="true"
+            className="w-full h-40 object-cover rounded-lg"
+          />
+
+          <div
+            aria-hidden="true"
+            className="w-12 h-12 rounded-lg bg-white shadow-md flex items-center justify-center text-[#0B84CF] absolute left-1/2 -bottom-5 -translate-x-1/2"
+          >
+            {icon}
+          </div>
         </div>
-        <span className="text-2xl font-semibold tracking-tight mb-1.5">
-          {title}
-        </span>
-        {subtitle && (
-          <span className="text-xs font-normal leading-snug">{subtitle}</span>
-        )}
+
+        {/* Card Title & Subtitle */}
+        <h2 className="text-lg font-semibold text-black mb-1">{title}</h2>
+        <p className="text-xs text-[#5E5E5F] leading-snug">{subtitle}</p>
       </button>
     </li>
   );

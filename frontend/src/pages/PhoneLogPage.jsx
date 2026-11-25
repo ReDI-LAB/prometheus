@@ -1,8 +1,7 @@
-import { useState, useRef, useEffect } from "react";
+import { useState } from "react";
 import InputField from "../components/InputField";
-import MemberSearchSelect from "../components/MemberSearchSelect";
 import SelectDropdown from "../components/SelectDropdown";
-import TextareaField from "../components/TextareaField";
+import MemberSearchSelect from "../components/MemberSearchSelect";
 import FormButton from "../components/FormButton";
 import ConfirmationCard from "../components/ConfirmationCard";
 import { CalendarPopover } from "../components/DatePicker";
@@ -16,40 +15,36 @@ import { useMembers } from "../context/useMembers";
  */
 function getPreviousBusinessDay() {
   const today = new Date();
-  const day = today.getDay(); // 0 = Sunday, 1 = Monday
+  const day = today.getDay();
   let diff = 1;
-  if (day === 1) diff = 3; // Monday -> Friday
-  if (day === 0) diff = 2; // Sunday -> Friday
+  if (day === 1) diff = 3;
+  if (day === 0) diff = 2;
 
   const lastWorkday = new Date(today);
   lastWorkday.setDate(today.getDate() - diff);
   return lastWorkday.toISOString().split("T")[0];
 }
 
-// Standardized call reason categories (1-5) matching backend topic_code
+// Lookup options matching public.call_topics integer codes (1-5)
 const CALL_REASONS = [
-  { value: "1", label: "1 · Schichtanmeldung" },
-  { value: "2", label: "2 · Clubhaus-Angelegenheiten" },
-  { value: "3", label: "3 · Beratungsgespräch" },
-  { value: "4", label: "4 · Krisenintervention" },
-  { value: "5", label: "5 · Begleitgespräch" },
+  { value: 1, label: "1. Schichtanmeldung" },
+  { value: 2, label: "2. Clubhaus-Angelegenheiten" },
+  { value: 3, label: "3. Beratungsgespräch" },
+  { value: 4, label: "4. Krisenintervention" },
+  { value: 5, label: "5. Begleitgespräch" },
 ];
 
-// Caller identity options matching backend person_type enum
+// Lookup options matching public.caller_types codes ('member' | 'staff')
 const CALLER_OPTIONS = [
   { value: "member", label: "Mitglied" },
-  { value: "staff", label: "Mitarbeiter" },
+  { value: "staff", label: "Mitarbeitende" },
 ];
 
 /**
  * PhoneLogPage Component
- * Form for logging phone calls, connected to central MemberContext and FastAPI backend.
- *
- * @param {Object} props
- * @param {Function} props.onBackToHome - Navigation callback returning to the dashboard
+ * Form for logging phone calls, connected to MemberContext and FastAPI backend.
  */
-export default function PhoneLogPage({ onBackToHome }) {
-  // Consume cached active members and loading state from central context
+export default function PhoneLogPage() {
   const { members, isLoading: isLoadingMembers } = useMembers();
 
   // --- Form Input States ---
@@ -61,27 +56,14 @@ export default function PhoneLogPage({ onBackToHome }) {
   const [reason, setReason] = useState("");
   const [note, setNote] = useState("");
 
-  // --- UI Feedback & Network States ---
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  // Undo snapshot after clicking "Abbrechen"
+  const [undoSnapshot, setUndoSnapshot] = useState(null);
+
+  // --- UI Feedback & Submission States ---
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
-
-  const datePopoverRef = useRef(null);
-
-  // Close calendar popover when clicking outside the date section
-  useEffect(() => {
-    function handleOutside(e) {
-      if (
-        datePopoverRef.current &&
-        !datePopoverRef.current.contains(e.target)
-      ) {
-        setIsEditingDate(false);
-      }
-    }
-    document.addEventListener("mousedown", handleOutside);
-    return () => document.removeEventListener("mousedown", handleOutside);
-  }, []);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   /**
    * Formats ISO date string into German localized date (e.g. "Montag, 07.09.2026").
@@ -101,7 +83,41 @@ export default function PhoneLogPage({ onBackToHome }) {
   }
 
   /**
-   * Validates mandatory form fields before opening the verification modal.
+   * Clears current inputs and stores a snapshot so the user can restore via "Rückgängig".
+   */
+  function handleClearWithUndo() {
+    setUndoSnapshot({
+      date,
+      selectedMember,
+      caller,
+      duration,
+      reason,
+      note,
+    });
+    setSelectedMember(null);
+    setCaller("");
+    setDuration("");
+    setReason("");
+    setNote("");
+    setErrorMessage("");
+  }
+
+  /**
+   * Restores the form state captured before clicking "Abbrechen".
+   */
+  function handleUndoRestore() {
+    if (!undoSnapshot) return;
+    setDate(undoSnapshot.date);
+    setSelectedMember(undoSnapshot.selectedMember);
+    setCaller(undoSnapshot.caller);
+    setDuration(undoSnapshot.duration);
+    setReason(undoSnapshot.reason);
+    setNote(undoSnapshot.note);
+    setUndoSnapshot(null);
+  }
+
+  /**
+   * Validates mandatory inputs and opens the verification modal before saving.
    *
    * @param {React.FormEvent} e - Form submit event
    */
@@ -112,12 +128,21 @@ export default function PhoneLogPage({ onBackToHome }) {
       setErrorMessage("Bitte wählen Sie ein Mitglied aus.");
       return;
     }
+
     if (!caller) {
       setErrorMessage("Bitte wählen Sie aus, wer telefoniert hat.");
       return;
     }
+
+    if (!duration || Number(duration) <= 0) {
+      setErrorMessage(
+        "Bitte geben Sie eine gültige Dauer in Minuten ein (> 0).",
+      );
+      return;
+    }
+
     if (!reason) {
-      setErrorMessage("Bitte wählen Sie den Grund des Anrufs aus.");
+      setErrorMessage("Bitte wählen Sie einen Grund für den Anruf aus.");
       return;
     }
 
@@ -126,8 +151,8 @@ export default function PhoneLogPage({ onBackToHome }) {
   }
 
   /**
-   * Executes API persistence call to FastAPI endpoint POST /api/v1/phone-calls.
-   * Clears caller-specific fields while keeping the selected date intact for batch entry.
+   * Submits phone call record to FastAPI endpoint POST /api/v1/phone-calls.
+   * Clears person-specific fields while preserving the selected date for batch entry.
    */
   async function handleFinalSave() {
     setShowConfirmation(false);
@@ -135,74 +160,66 @@ export default function PhoneLogPage({ onBackToHome }) {
     setIsSubmitting(true);
 
     try {
+      const personId = selectedMember.member_id || selectedMember.mitglied_id;
+
       await createPhoneCall({
-        person_id: selectedMember.member_id,
+        person_id: personId,
         person_type: caller,
         call_date: date,
-        duration_minutes: duration,
-        topic_code: reason,
-        note: note,
+        duration_minutes: Number(duration),
+        topic_code: Number(reason),
+        note,
       });
 
       setSaveSuccess(true);
+      setUndoSnapshot(null);
       setSelectedMember(null);
+      setCaller("");
       setDuration("");
       setReason("");
       setNote("");
-      setCaller("");
 
       setTimeout(() => {
         setSaveSuccess(false);
       }, 3000);
-    } catch (err) {
-      setErrorMessage(
-        err.message || "Fehler beim Speichern der Telefondokumentation.",
-      );
+    } catch (error) {
+      setErrorMessage(error.message);
     } finally {
       setIsSubmitting(false);
     }
   }
 
-  // Lookup German display labels for the verification summary
-  const selectedReasonLabel =
-    CALL_REASONS.find((r) => r.value === reason)?.label || "Nicht ausgewählt";
-  const selectedCallerLabel =
-    CALLER_OPTIONS.find((c) => c.value === caller)?.label || caller;
+  const memberDisplayName = selectedMember
+    ? `${selectedMember.first_name || selectedMember.vorname || ""} ${selectedMember.last_name || selectedMember.nachname || ""}`.trim()
+    : "Kein Mitglied ausgewählt";
 
-  // Key-value summary rows displayed inside ConfirmationCard
+  const callerLabel =
+    CALLER_OPTIONS.find((item) => item.value === caller)?.label || "-";
+
+  const reasonLabel =
+    CALL_REASONS.find(
+      (item) => String(item.value) === String(reason),
+    )?.label.replace(/^\d+\.\s*/, "") || "-";
+
   const confirmationItems = [
     { label: "Datum", value: formatDisplayDate(date) },
+    { label: "Mitglied", value: memberDisplayName },
+    { label: "Wer telefoniert", value: callerLabel },
     {
-      label: "Mitglied",
-      value: selectedMember
-        ? `${selectedMember.first_name} ${selectedMember.last_name}`
-        : "",
+      label: "Dauer (Minuten)",
+      value: duration ? String(duration).padStart(2, "0") : "-",
     },
-    { label: "Wer telefoniert", value: selectedCallerLabel },
-    { label: "Dauer (Minuten)", value: String(duration).padStart(2, "0") },
-    { label: "Grund des Anrufs", value: selectedReasonLabel },
+    { label: "Grund des Anrufs", value: reasonLabel },
   ];
 
   return (
-    <article aria-labelledby="phone-log-heading" className="app-card">
+    <article aria-labelledby="phonelog-form-heading" className="app-card">
       {/* Dark Blue Header Bar (#05619A) */}
       <header className="app-card-header">
-        <h2 id="phone-log-heading">Neuer Telefondoku-Eintrag</h2>
+        <h2 id="phonelog-form-heading">Neuer Telefondoku-Eintrag</h2>
       </header>
 
       <div className="p-6 sm:p-8">
-        {/* Success notification banner */}
-        {saveSuccess && (
-          <aside
-            role="status"
-            aria-live="polite"
-            className="mb-4 p-3 bg-green-50 border border-[#0E8B06]/30 text-[#0E8B06] text-xs font-medium rounded-md"
-          >
-            ✓ Telefondokumentation erfolgreich gespeichert!
-          </aside>
-        )}
-
-        {/* Error notification banner */}
         {errorMessage && (
           <aside
             role="alert"
@@ -223,12 +240,8 @@ export default function PhoneLogPage({ onBackToHome }) {
 
         {/* Inner bordered form container */}
         <div className="app-form-box">
-          {/* Date header section with interactive calendar popover */}
-          <section
-            ref={datePopoverRef}
-            aria-label="Datumsangabe"
-            className="relative mb-5"
-          >
+          {/* Date header section with calendar overlay trigger */}
+          <section aria-label="Datumsangabe" className="mb-5">
             <div className="flex items-center gap-2">
               <span className="text-base font-medium text-black">
                 {formatDisplayDate(date)}
@@ -259,28 +272,27 @@ export default function PhoneLogPage({ onBackToHome }) {
             </p>
 
             {isEditingDate && (
-              <div className="absolute left-0 top-full mt-2 z-40">
-                <CalendarPopover
-                  value={date}
-                  onCancel={() => setIsEditingDate(false)}
-                  onApply={(newIso) => {
-                    setDate(newIso);
-                    setIsEditingDate(false);
-                  }}
-                />
-              </div>
+              <CalendarPopover
+                value={date}
+                onCancel={() => setIsEditingDate(false)}
+                onApply={(newIso) => {
+                  setDate(newIso);
+                  setIsEditingDate(false);
+                }}
+              />
             )}
           </section>
 
-          {/* Semantic phone log entry form */}
           <form onSubmit={handleFormSubmit} className="space-y-5">
-            {/* Row 1: Searchable member combobox */}
             <MemberSearchSelect
-              id="member-search"
+              id="phonelog-member-search"
               label="Mitglied"
               members={members}
               selectedMember={selectedMember}
-              onSelect={(member) => setSelectedMember(member)}
+              onSelect={(member) => {
+                setSelectedMember(member);
+                setUndoSnapshot(null);
+              }}
               placeholder={
                 isLoadingMembers
                   ? "Lade Mitglieder..."
@@ -289,18 +301,20 @@ export default function PhoneLogPage({ onBackToHome }) {
               required
             />
 
-            {/* Row 2: Caller identity and call duration */}
             <fieldset className="grid grid-cols-1 sm:grid-cols-2 gap-4 border-0 p-0 m-0">
-              <legend className="sr-only">Anrufdetails</legend>
+              <legend className="sr-only">Gesprächsdetails</legend>
 
               <SelectDropdown
-                id="who-is-calling"
+                id="caller"
                 label="Wer telefoniert"
-                placeholder="bitte wählen"
-                value={caller}
-                onChange={(e) => setCaller(e.target.value)}
-                options={CALLER_OPTIONS}
                 required
+                value={caller}
+                onChange={(e) => {
+                  setCaller(e.target.value);
+                  setUndoSnapshot(null);
+                }}
+                options={CALLER_OPTIONS}
+                placeholder="bitte wählen"
               />
 
               <InputField
@@ -308,40 +322,55 @@ export default function PhoneLogPage({ onBackToHome }) {
                 label="Dauer (Minuten)"
                 type="number"
                 min="1"
-                placeholder="z.B. 12"
-                value={duration}
-                onChange={(e) => setDuration(e.target.value)}
+                max="480"
                 required
+                value={duration}
+                onChange={(e) => {
+                  setDuration(e.target.value);
+                  setUndoSnapshot(null);
+                }}
+                placeholder="z.B. 12"
+                onlyNumbers
               />
             </fieldset>
 
-            {/* Row 3: Call reason category (1-5) */}
             <SelectDropdown
-              id="call-reason"
+              id="reason"
               label="Grund des Anrufs"
-              placeholder="Grund auswählen"
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
-              options={CALL_REASONS}
               required
+              value={reason}
+              onChange={(e) => {
+                setReason(e.target.value);
+                setUndoSnapshot(null);
+              }}
+              options={CALL_REASONS}
+              placeholder="Grund auswählen"
             />
 
-            {/* Row 4: Optional notes textarea */}
-            <TextareaField
-              id="note"
-              label="Anmerkung"
-              placeholder="Bei Bedarf eine Anmerkung hinzufügen (max. 500 Zeichen)"
-              rows={3}
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-            />
+            <div className="flex flex-col gap-1.5 w-full">
+              <label
+                htmlFor="phonelog-note"
+                className="text-sm font-medium text-black"
+              >
+                Anmerkung
+              </label>
+              <textarea
+                id="phonelog-note"
+                name="note"
+                rows={3}
+                maxLength={500}
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                placeholder="Bei Bedarf eine Anmerkung hinzufügen (max. 500 Zeichen)"
+                className="w-full rounded-md border border-gray-500 p-3 text-base text-black placeholder-[#B8BBBD] bg-white focus:border-[#0B84CF] focus:ring-2 focus:ring-[#0B84CF]/25 focus:outline-none"
+              />
+            </div>
 
-            {/* Row 5: Primary and secondary action buttons */}
             <div className="grid grid-cols-2 gap-4 pt-3">
               <FormButton
                 type="button"
                 variant="secondary"
-                onClick={onBackToHome}
+                onClick={handleClearWithUndo}
                 className="w-full"
               >
                 Abbrechen
@@ -357,9 +386,63 @@ export default function PhoneLogPage({ onBackToHome }) {
             </div>
           </form>
         </div>
+
+        {/* Floating "Rückgängig" Pill Toast after clicking Abbrechen */}
+        {undoSnapshot && (
+          <div className="flex justify-center mt-5">
+            <div
+              role="status"
+              aria-live="polite"
+              className="inline-flex items-center gap-3 bg-white border border-gray-300 shadow-md rounded-md px-4 py-2 text-sm font-semibold text-black"
+            >
+              <button
+                type="button"
+                onClick={handleUndoRestore}
+                className="hover:text-[#0B84CF] cursor-pointer"
+              >
+                Rückgängig
+              </button>
+              <button
+                type="button"
+                onClick={() => setUndoSnapshot(null)}
+                aria-label="Hinweis schließen"
+                className="text-gray-600 hover:text-black cursor-pointer text-xs"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* Verification modal dialog before final API persistence */}
+      {/* Figma Success Overlay Card */}
+      {saveSuccess && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div
+            role="status"
+            aria-live="polite"
+            className="bg-white rounded-xl shadow-xl px-10 py-8 text-center max-w-sm w-full"
+          >
+            <div className="w-12 h-12 rounded-full bg-[#0E8B06] text-white flex items-center justify-center mx-auto mb-3">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="3"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="w-6 h-6"
+              >
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+            </div>
+            <h3 className="text-xl font-bold text-[#0E8B06] mb-1">Super!</h3>
+            <p className="text-sm text-black">Daten erfolgreich gespeichert.</p>
+          </div>
+        </div>
+      )}
+
       <ConfirmationCard
         isOpen={showConfirmation}
         title="Daten überprüfen"

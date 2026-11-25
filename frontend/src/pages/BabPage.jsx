@@ -55,11 +55,8 @@ function calculateDuration(arrival, departure) {
 /**
  * BabPage Component
  * Form for daily attendance logging (BAB), connected to MemberContext and attendance summary API.
- *
- * @param {Object} props
- * @param {Function} props.onBackToHome - Navigation callback returning to the dashboard
  */
-export default function BabPage({ onBackToHome }) {
+export default function BabPage() {
   const { members, isLoading: isLoadingMembers } = useMembers();
 
   // --- Form Input States ---
@@ -70,6 +67,13 @@ export default function BabPage({ onBackToHome }) {
   const [note, setNote] = useState("");
   const [selectedMember, setSelectedMember] = useState(null);
   const [monthlyVisits, setMonthlyVisits] = useState(null);
+
+  // Manual status override state (e.g. "Mo" or "M")
+  const [statusOverride, setStatusOverride] = useState(null);
+  const [isEditingStatus, setIsEditingStatus] = useState(false);
+
+  // Undo snapshot after clicking "Abbrechen"
+  const [undoSnapshot, setUndoSnapshot] = useState(null);
 
   // --- UI Feedback & Submission States ---
   const [showConfirmation, setShowConfirmation] = useState(false);
@@ -105,7 +109,7 @@ export default function BabPage({ onBackToHome }) {
   // Derived calculations: live duration, membership status (M vs. MO), and monthly counter
   const totalHours = calculateDuration(arrival, departure);
 
-  const statusBadge =
+  const computedStatusBadge =
     typeof selectedMember?.is_member === "boolean"
       ? selectedMember.is_member
         ? "M"
@@ -115,6 +119,15 @@ export default function BabPage({ onBackToHome }) {
             selectedMember.membership_status || selectedMember.mitgliedsstatus
           ).toUpperCase()
         : "MO";
+
+  const statusBadge =
+    statusOverride !== null ? statusOverride : computedStatusBadge;
+
+  const formattedStatusLabel =
+    statusBadge.length === 1
+      ? statusBadge.toUpperCase()
+      : statusBadge.charAt(0).toUpperCase() +
+        statusBadge.slice(1).toLowerCase();
 
   const attendanceMonthly =
     selectedMember && monthlyVisits !== null
@@ -136,6 +149,44 @@ export default function BabPage({ onBackToHome }) {
       month: "2-digit",
       year: "numeric",
     });
+  }
+
+  /**
+   * Clears current inputs and stores a snapshot so the user can restore via "Rückgängig".
+   */
+  function handleClearWithUndo() {
+    setUndoSnapshot({
+      date,
+      arrival,
+      departure,
+      note,
+      selectedMember,
+      monthlyVisits,
+      statusOverride,
+    });
+    setSelectedMember(null);
+    setMonthlyVisits(null);
+    setStatusOverride(null);
+    setIsEditingStatus(false);
+    setArrival("09:00");
+    setDeparture("14:00");
+    setNote("");
+    setErrorMessage("");
+  }
+
+  /**
+   * Restores the form state captured before clicking "Abbrechen".
+   */
+  function handleUndoRestore() {
+    if (!undoSnapshot) return;
+    setDate(undoSnapshot.date);
+    setArrival(undoSnapshot.arrival);
+    setDeparture(undoSnapshot.departure);
+    setNote(undoSnapshot.note);
+    setSelectedMember(undoSnapshot.selectedMember);
+    setMonthlyVisits(undoSnapshot.monthlyVisits);
+    setStatusOverride(undoSnapshot.statusOverride);
+    setUndoSnapshot(null);
   }
 
   /**
@@ -180,8 +231,11 @@ export default function BabPage({ onBackToHome }) {
       });
 
       setSaveSuccess(true);
+      setUndoSnapshot(null);
       setSelectedMember(null);
       setMonthlyVisits(null);
+      setStatusOverride(null);
+      setIsEditingStatus(false);
       setNote("");
 
       setTimeout(() => {
@@ -203,7 +257,7 @@ export default function BabPage({ onBackToHome }) {
     { label: "Mitglied", value: memberDisplayName },
     { label: "Uhrzeit", value: `${arrival} – ${departure}` },
     { label: "Gesamtstunden", value: totalHours },
-    { label: "Status", value: statusBadge },
+    { label: "Status", value: statusBadge.toUpperCase() },
     { label: "Anwesenheit", value: attendanceMonthly },
   ];
 
@@ -215,16 +269,6 @@ export default function BabPage({ onBackToHome }) {
       </header>
 
       <div className="p-6 sm:p-8">
-        {saveSuccess && (
-          <aside
-            role="status"
-            aria-live="polite"
-            className="mb-4 p-3 bg-green-50 border border-[#0E8B06]/30 text-[#0E8B06] text-xs font-medium rounded-md"
-          >
-            ✓ Anwesenheit erfolgreich im Backend gespeichert!
-          </aside>
-        )}
-
         {errorMessage && (
           <aside
             role="alert"
@@ -296,6 +340,9 @@ export default function BabPage({ onBackToHome }) {
               selectedMember={selectedMember}
               onSelect={(member) => {
                 setSelectedMember(member);
+                setStatusOverride(null);
+                setIsEditingStatus(false);
+                setUndoSnapshot(null);
                 if (!member) setMonthlyVisits(null);
               }}
               placeholder={
@@ -351,14 +398,56 @@ export default function BabPage({ onBackToHome }) {
                 </dd>
               </div>
 
-              <div className="flex items-center gap-1.5 text-[#5E5E5F]">
-                <dt>Status:</dt>
-                <dd className="font-semibold text-black inline-flex items-center gap-1.5">
-                  <span>
-                    {statusBadge.charAt(0).toUpperCase() +
-                      statusBadge.slice(1).toLowerCase()}
-                  </span>
-                </dd>
+              <div className="flex flex-col gap-1 text-[#5E5E5F]">
+                <div className="flex items-center gap-1.5">
+                  <dt>Status:</dt>
+                  {!isEditingStatus && (
+                    <dd className="font-semibold text-black inline-flex items-center gap-1.5">
+                      <span>{formattedStatusLabel}</span>
+                      <button
+                        type="button"
+                        onClick={() => setIsEditingStatus(true)}
+                        className="text-[#0B84CF] hover:text-[#05619A] cursor-pointer p-0.5"
+                        title="Status bearbeiten"
+                        aria-label="Mitgliedsstatus bearbeiten"
+                      >
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          className="w-3.5 h-3.5"
+                        >
+                          <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
+                        </svg>
+                      </button>
+                    </dd>
+                  )}
+                </div>
+
+                {isEditingStatus && (
+                  <div className="max-w-xs">
+                    <input
+                      type="text"
+                      aria-label="Status eingeben (z. B. Mo oder M)"
+                      value={statusOverride ?? formattedStatusLabel}
+                      onChange={(e) => setStatusOverride(e.target.value)}
+                      onBlur={() => setIsEditingStatus(false)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          setIsEditingStatus(false);
+                        }
+                      }}
+                      autoFocus
+                      maxLength={10}
+                      className="h-9 w-full rounded-md border-2 border-[#0B84CF] px-3 text-sm font-semibold text-black bg-white focus:outline-none"
+                    />
+                  </div>
+                )}
               </div>
 
               <div className="flex items-baseline gap-1.5 text-[#5E5E5F]">
@@ -392,7 +481,7 @@ export default function BabPage({ onBackToHome }) {
               <FormButton
                 type="button"
                 variant="secondary"
-                onClick={onBackToHome}
+                onClick={handleClearWithUndo}
                 className="w-full"
               >
                 Abbrechen
@@ -408,7 +497,62 @@ export default function BabPage({ onBackToHome }) {
             </div>
           </form>
         </div>
+
+        {/* Floating "Rückgängig" Pill Toast after clicking Abbrechen */}
+        {undoSnapshot && (
+          <div className="flex justify-center mt-5">
+            <div
+              role="status"
+              aria-live="polite"
+              className="inline-flex items-center gap-3 bg-white border border-gray-300 shadow-md rounded-md px-4 py-2 text-sm font-semibold text-black"
+            >
+              <button
+                type="button"
+                onClick={handleUndoRestore}
+                className="hover:text-[#0B84CF] cursor-pointer"
+              >
+                Rückgängig
+              </button>
+              <button
+                type="button"
+                onClick={() => setUndoSnapshot(null)}
+                aria-label="Hinweis schließen"
+                className="text-gray-600 hover:text-black cursor-pointer text-xs"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        )}
       </div>
+
+      {/* Figma Success Overlay Card */}
+      {saveSuccess && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div
+            role="status"
+            aria-live="polite"
+            className="bg-white rounded-xl shadow-xl px-10 py-8 text-center max-w-sm w-full"
+          >
+            <div className="w-12 h-12 rounded-full bg-[#0E8B06] text-white flex items-center justify-center mx-auto mb-3">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="3"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="w-6 h-6"
+              >
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+            </div>
+            <h3 className="text-xl font-bold text-[#0E8B06] mb-1">Super!</h3>
+            <p className="text-sm text-black">Daten erfolgreich gespeichert.</p>
+          </div>
+        </div>
+      )}
 
       <ConfirmationCard
         isOpen={showConfirmation}

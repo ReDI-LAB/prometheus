@@ -31,6 +31,17 @@ const GENDER_OPTIONS = [
   { value: "unspecified", label: "Keine Angabe" },
 ];
 
+// European calling codes matching Figma mobile prefix selector
+const DIAL_CODE_OPTIONS = [
+  { value: "+49", label: "🇩🇪 +49" },
+  { value: "+43", label: "🇦🇹 +43" },
+  { value: "+41", label: "🇨🇭 +41" },
+  { value: "+45", label: "🇩🇰 +45" },
+  { value: "+33", label: "🇫🇷 +33" },
+  { value: "+39", label: "🇮🇹 +39" },
+  { value: "+385", label: "🇭🇷 +385" },
+];
+
 // Fallback country ISO codes accepted by public.countries foreign key
 const FALLBACK_COUNTRY_OPTIONS = [
   { value: "DE", label: "Deutschland" },
@@ -81,6 +92,7 @@ const INITIAL_FORM_DATA = {
   ort: "München",
   land: "DE",
   sektor: "",
+  mobile_vorwahl: "+49",
   mobile: "",
   telefon: "",
   email: "",
@@ -88,6 +100,7 @@ const INITIAL_FORM_DATA = {
   // Emergency Contact
   notfall_name: "",
   notfall_beziehung: "",
+  notfall_vorwahl: "+49",
   notfall_mobile: "",
 
   // Step 3: ClubHaus (pre-filled with today's date)
@@ -109,7 +122,6 @@ function resolveMunichSector(plz, sectorRows) {
     return { isValid: true, sectorLabel: "" };
   }
 
-  // If lookup data has not loaded yet, fall back to Munich prefix heuristic
   if (!Array.isArray(sectorRows) || sectorRows.length === 0) {
     if (!plz.startsWith("80") && !plz.startsWith("81")) {
       return { isValid: false, sectorLabel: "" };
@@ -227,7 +239,7 @@ export default function NewMemberForm() {
           );
         }
       } catch {
-        // Keep fallback options silently if backend is unreachable during UI-only work
+        // Keep fallback options silently if backend is unreachable
       }
     }
 
@@ -271,6 +283,16 @@ export default function NewMemberForm() {
     }
 
     setFormData((prev) => ({ ...prev, [field]: value }));
+  }
+
+  /**
+   * Handles direct step navigation via StepProgress click.
+   *
+   * @param {number} targetStep - Target step number (1..3)
+   */
+  function handleStepClick(targetStep) {
+    setErrorMessage("");
+    setCurrentStep(targetStep);
   }
 
   /**
@@ -327,15 +349,13 @@ export default function NewMemberForm() {
 
   /**
    * Maps German frontend form state to the backend's MemberCreate Pydantic schema.
-   * Sends null for postal_code if omitted or outside the 74 Munich pilot postal codes
-   * to satisfy the foreign key constraint on public.sectors.
    *
    * @param {Object} data - Current form state
    * @returns {Object} Clean JSON payload for POST /api/v1/members
    */
   function buildMemberPayload(data) {
     const fullPhone = data.mobile?.trim()
-      ? `+49${data.mobile.trim().replace(/^0+/, "")}`
+      ? `${data.mobile_vorwahl || "+49"}${data.mobile.trim().replace(/^0+/, "")}`
       : data.telefon?.trim() || null;
 
     const rawPlz = data.postleitzahl?.trim() || "";
@@ -357,11 +377,10 @@ export default function NewMemberForm() {
       country: data.land || "DE",
     };
 
-    // Include nested emergency_contact only if both required fields (name & phone) are filled
     if (data.notfall_name?.trim() && data.notfall_mobile?.trim()) {
       payload.emergency_contact = {
         name: data.notfall_name.trim(),
-        phone: data.notfall_mobile.trim(),
+        phone: `${data.notfall_vorwahl || "+49"}${data.notfall_mobile.trim().replace(/^0+/, "")}`,
         relationship: data.notfall_beziehung || null,
       };
     }
@@ -405,29 +424,32 @@ export default function NewMemberForm() {
       ? SALUTATION_OPTIONS.find((opt) => opt.value === formData.anrede)?.label
       : "";
 
-  const genderLabel =
-    GENDER_OPTIONS.find((opt) => opt.value === formData.geschlecht)?.label ||
-    "-";
-
   const staffDisplayName =
     staffOptions.find((s) => s.value === formData.ori_mitarbeiter)?.label ||
     formData.ori_mitarbeiter ||
     "-";
 
   const confirmationItems = [
+    { section: "Persönliche Daten" },
     {
       label: "Name",
       value:
         `${salutationLabel ? salutationLabel + " " : ""}${formData.vorname} ${formData.nachname}`.trim(),
     },
     { label: "Geburtsdatum", value: formData.geburtsdatum || "-" },
-    { label: "Geschlecht", value: genderLabel },
+    { section: "Kontaktdaten" },
     { label: "Straße & Hausnummer", value: formData.strasse_hausnummer || "-" },
     { label: "Postleitzahl (PLZ)", value: formData.postleitzahl || "-" },
     { label: "Sektor", value: formData.sektor || "-" },
     { label: "Stadt", value: formData.ort || "-" },
-    { label: "Mobil", value: formData.mobile ? `+49 ${formData.mobile}` : "-" },
+    {
+      label: "Mobil",
+      value: formData.mobile
+        ? `${formData.mobile_vorwahl}${formData.mobile}`
+        : "-",
+    },
     { label: "E-Mail", value: formData.email || "-" },
+    { section: "ClubHaus" },
     { label: "Eintrittsdatum", value: formData.eintrittsdatum || "-" },
     {
       label: "Orientierungsgespräch geführt von",
@@ -464,7 +486,11 @@ export default function NewMemberForm() {
 
         {/* Inner bordered form container */}
         <div className="app-form-box">
-          <StepProgress steps={STEPS} currentStep={currentStep} />
+          <StepProgress
+            steps={STEPS}
+            currentStep={currentStep}
+            onStepClick={handleStepClick}
+          />
 
           <form onSubmit={handleNextStep} className="space-y-5">
             {/* Step 1: Personal Details */}
@@ -480,6 +506,7 @@ export default function NewMemberForm() {
                     label="Anrede"
                     value={formData.anrede}
                     onChange={(e) => handleChange("anrede", e.target.value)}
+                    onClear={() => handleChange("anrede", "")}
                     options={SALUTATION_OPTIONS}
                     placeholder="Bitte wählen"
                   />
@@ -517,6 +544,7 @@ export default function NewMemberForm() {
                   label="Geschlecht"
                   value={formData.geschlecht}
                   onChange={(e) => handleChange("geschlecht", e.target.value)}
+                  onClear={() => handleChange("geschlecht", "")}
                   options={GENDER_OPTIONS}
                   placeholder="Geschlecht auswählen"
                 />
@@ -573,7 +601,9 @@ export default function NewMemberForm() {
                     label="Land"
                     value={formData.land}
                     onChange={(e) => handleChange("land", e.target.value)}
+                    onClear={() => handleChange("land", "")}
                     options={countryOptions}
+                    placeholder="Land auswählen"
                   />
 
                   <InputField
@@ -581,7 +611,8 @@ export default function NewMemberForm() {
                     label="Sektor"
                     value={formData.sektor}
                     onChange={(e) => handleChange("sektor", e.target.value)}
-                    placeholder="Automatisch aus PLZ"
+                    onClear={() => handleChange("sektor", "")}
+                    placeholder="Sektor auswählen"
                     readOnly
                   />
                 </div>
@@ -595,9 +626,20 @@ export default function NewMemberForm() {
                       Mobil
                     </label>
                     <div className="flex h-11 rounded-md border border-gray-500 bg-white overflow-hidden focus-within:border-[#0B84CF] focus-within:ring-2 focus-within:ring-[#0B84CF]/25">
-                      <span className="inline-flex items-center gap-1 px-3 border-r border-gray-300 bg-white text-black text-sm select-none">
-                        🇩🇪 +49
-                      </span>
+                      <select
+                        aria-label="Ländervorwahl Mobil"
+                        value={formData.mobile_vorwahl}
+                        onChange={(e) =>
+                          handleChange("mobile_vorwahl", e.target.value)
+                        }
+                        className="px-2.5 border-r border-gray-300 bg-white text-black text-sm focus:outline-none cursor-pointer"
+                      >
+                        {DIAL_CODE_OPTIONS.map((opt) => (
+                          <option key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </option>
+                        ))}
+                      </select>
                       <input
                         id="mobile"
                         type="tel"
@@ -646,12 +688,12 @@ export default function NewMemberForm() {
                   <div className="space-y-4">
                     <InputField
                       id="emergency-name"
-                      label="Name der Kontaktperson"
+                      label="Name (Notfall)"
                       value={formData.notfall_name}
                       onChange={(e) =>
                         handleChange("notfall_name", e.target.value)
                       }
-                      placeholder="z. B. Maria Mustermann"
+                      placeholder="Name"
                       onlyLetters
                     />
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -662,6 +704,7 @@ export default function NewMemberForm() {
                         onChange={(e) =>
                           handleChange("notfall_beziehung", e.target.value)
                         }
+                        onClear={() => handleChange("notfall_beziehung", "")}
                         options={relationshipOptions}
                         placeholder="Bitte wählen"
                       />
@@ -671,12 +714,23 @@ export default function NewMemberForm() {
                           htmlFor="emergency-phone"
                           className="text-sm font-medium text-black"
                         >
-                          Mobil
+                          Mobil (Notfall)
                         </label>
                         <div className="flex h-11 rounded-md border border-gray-500 bg-white overflow-hidden focus-within:border-[#0B84CF] focus-within:ring-2 focus-within:ring-[#0B84CF]/25">
-                          <span className="inline-flex items-center gap-1 px-3 border-r border-gray-300 bg-white text-black text-sm select-none">
-                            🇩🇪 +49
-                          </span>
+                          <select
+                            aria-label="Ländervorwahl Notfallkontakt"
+                            value={formData.notfall_vorwahl}
+                            onChange={(e) =>
+                              handleChange("notfall_vorwahl", e.target.value)
+                            }
+                            className="px-2.5 border-r border-gray-300 bg-white text-black text-sm focus:outline-none cursor-pointer"
+                          >
+                            {DIAL_CODE_OPTIONS.map((opt) => (
+                              <option key={opt.value} value={opt.value}>
+                                {opt.label}
+                              </option>
+                            ))}
+                          </select>
                           <input
                             id="emergency-phone"
                             type="tel"
@@ -717,6 +771,7 @@ export default function NewMemberForm() {
                   onChange={(e) =>
                     handleChange("ori_mitarbeiter", e.target.value)
                   }
+                  onClear={() => handleChange("ori_mitarbeiter", "")}
                   options={staffOptions}
                   placeholder={
                     staffOptions.length > 0
