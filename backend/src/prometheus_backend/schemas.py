@@ -14,6 +14,34 @@ from pydantic import (
 )
 
 
+def _reject_nul(value: str) -> str:
+    # The database cannot store NUL characters in text columns.
+    if "\x00" in value:
+        raise ValueError("must not contain NUL characters")
+    return value
+
+
+def _optional_text(max_length: int) -> BeforeValidator:
+    """Trim a string, turn blank into None, and enforce a maximum length."""
+
+    def clean(value: object) -> object:
+        if not isinstance(value, str):
+            return value
+        value = _reject_nul(value).strip()
+        if len(value) > max_length:
+            raise ValueError(f"must be at most {max_length} characters")
+        return value or None
+
+    return BeforeValidator(clean)
+
+
+def _required_text(max_length: int) -> tuple[object, ...]:
+    return (
+        StringConstraints(strip_whitespace=True, min_length=1, max_length=max_length),
+        AfterValidator(_reject_nul),
+    )
+
+
 class PhoneCallCreate(BaseModel):
     model_config = ConfigDict(
         json_schema_extra={
@@ -71,6 +99,7 @@ class PhoneCallPage(BaseModel):
 
 class AttendanceCreate(BaseModel):
     model_config = ConfigDict(
+        extra="forbid",
         json_schema_extra={
             "examples": [
                 {
@@ -78,15 +107,22 @@ class AttendanceCreate(BaseModel):
                     "attendance_date": "2026-11-19",
                     "time_in": "09:00",
                     "time_out": "11:30",
+                    "note": "Helped in the kitchen",
                 }
             ]
-        }
+        },
     )
 
     member_id: uuid.UUID = Field(description="Use an id from GET /api/v1/members")
     attendance_date: date
     time_in: time
     time_out: time | None = None
+    # 500 characters is the form's limit; the database column itself has no
+    # length limit.
+    note: Annotated[str | None, _optional_text(500)] = Field(
+        default=None,
+        description="Optional note for this visit, at most 500 characters; blank is saved as null",
+    )
 
     @model_validator(mode="after")
     def time_out_not_before_time_in(self) -> "AttendanceCreate":
@@ -104,6 +140,7 @@ class AttendanceRead(BaseModel):
     time_in: time
     time_out: time | None
     created_at: datetime
+    note: str | None
 
 
 class AttendanceSummary(BaseModel):
@@ -148,34 +185,6 @@ class MemberPage(BaseModel):
     total: int
     limit: int
     offset: int
-
-
-def _reject_nul(value: str) -> str:
-    # The database cannot store NUL characters in text columns.
-    if "\x00" in value:
-        raise ValueError("must not contain NUL characters")
-    return value
-
-
-def _optional_text(max_length: int) -> BeforeValidator:
-    """Trim a string, turn blank into None, and enforce a maximum length."""
-
-    def clean(value: object) -> object:
-        if not isinstance(value, str):
-            return value
-        value = _reject_nul(value).strip()
-        if len(value) > max_length:
-            raise ValueError(f"must be at most {max_length} characters")
-        return value or None
-
-    return BeforeValidator(clean)
-
-
-def _required_text(max_length: int) -> tuple[object, ...]:
-    return (
-        StringConstraints(strip_whitespace=True, min_length=1, max_length=max_length),
-        AfterValidator(_reject_nul),
-    )
 
 
 class EmergencyContactCreate(BaseModel):
