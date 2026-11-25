@@ -12,12 +12,14 @@ Python FastAPI backend for Project Prometheus.
 
 ### Database
 
-The schema script (version 3) lives on the `data_architecture` branch, not on this one. Fetch it and save it outside the repository:
+The schema script (version 4) lives on the `data_architecture` branch, not on this one. Fetch it and save it outside the repository:
 
 ```sh
 git fetch origin
-git show origin/data_architecture:data_architecture/prometheus_redi_schema_V3.sql > ~/prometheus_redi_schema_V3.sql
+git show origin/data_architecture:data_architecture/prometheus_redi_schema_V4.sql > ~/prometheus_redi_schema_V4.sql
 ```
+
+The backend needs a version 4 database: it reads columns of the `members_current` view (`landline_phone`, `ori_interviewer_id`) that only version 4 has, so member requests fail against a version 3 database.
 
 Start a PostgreSQL 17 container for it. The script itself requires an empty database named exactly `prometheus_redi` on PostgreSQL 17+, and refuses to run otherwise:
 
@@ -35,22 +37,26 @@ Wait until the container is ready, then run the script against it. The readiness
 
 ```sh
 until docker exec prometheus-redi-db pg_isready -h 127.0.0.1 -U postgres -d prometheus_redi; do sleep 1; done
-cat ~/prometheus_redi_schema_V3.sql | docker exec -i prometheus-redi-db psql -U postgres -d prometheus_redi -v ON_ERROR_STOP=1
+cat ~/prometheus_redi_schema_V4.sql | docker exec -i prometheus-redi-db psql -U postgres -d prometheus_redi -v ON_ERROR_STOP=1
 ```
 
-A successful run ends with the line `Prometheus Redi V3 installation complete`. Never run this script against a database that already has data in it — it only installs into a genuinely empty database. The backend itself never creates or changes tables; all schema changes come from this script.
+A successful run ends with the line `Prometheus Redi V4 installation complete`. Never run this script against a database that already has data in it — it only installs into a genuinely empty database. The backend itself never creates or changes tables; all schema changes come from this script.
 
 #### Verify the installation (optional)
 
-The `data_architecture` branch also contains a regression test file for the schema. It verifies an installation that already exists; never use it to install the schema. It must run in full, against the `prometheus_redi` database:
+The `data_architecture` branch also contains two check files for the schema. Both verify an installation that already exists; never use them to install the schema. Each must run in full, against the `prometheus_redi` database:
 
-- `prometheus_redi_schema_tests_V3.sql` uses synthetic rows and runs inside a transaction that ends with `ROLLBACK`, so it leaves no data behind. If it fails, execute `ROLLBACK;` before trying again, and never rerun the installer.
+- `prometheus_redi_healthcheck_V4.sql` is read-only: it runs in a read-only transaction and lists the key columns, table and partition counts, lookup values and reconciliation status.
+- `prometheus_redi_schema_tests_V4.sql` runs 120 checks with synthetic rows inside a transaction that ends with `ROLLBACK`, so it leaves no data behind. If it fails, execute `ROLLBACK;` before trying again, and never rerun the installer.
 
 ```sh
-git show origin/data_architecture:data_architecture/prometheus_redi_schema_tests_V3.sql | docker exec -i prometheus-redi-db psql -v ON_ERROR_STOP=1 -U postgres -d prometheus_redi
+git show origin/data_architecture:data_architecture/prometheus_redi_healthcheck_V4.sql | docker exec -i prometheus-redi-db psql -v ON_ERROR_STOP=1 -U postgres -d prometheus_redi
+git show origin/data_architecture:data_architecture/prometheus_redi_schema_tests_V4.sql | docker exec -i prometheus-redi-db psql -v ON_ERROR_STOP=1 -U postgres -d prometheus_redi
 ```
 
-An optional read-only healthcheck file for version 3 is not available yet.
+#### Existing version 3 database
+
+The installer only works on an empty database. For a database that already has version 3 installed, the `data_architecture` branch contains `prometheus_redi_upgrade_V3_to_V4.sql`. It runs only on an installed version 3 `prometheus_redi` database (PostgreSQL 17+, as the database owner) and refuses to run otherwise, for example when the version 4 columns already exist. It locks the `members`, `members_deleted`, `attendance`, `attendance_deleted` and `staff` tables while it runs, keeps the existing rows and values, and adds the new columns as empty (`NULL`). Run the entire file with `-v ON_ERROR_STOP=1`, as for the installer, and back up the database first.
 
 ### Test data
 
@@ -72,10 +78,20 @@ FROM public.clubhouses
 LIMIT 1;
 ```
 
-Look up a `member_id` to use against the endpoints below:
+To try the optional ORI interviewer of a member, also insert a staff person:
+
+```sql
+INSERT INTO public.staff (clubhouse_id, first_name, last_name, role)
+SELECT clubhouse_id, 'Tom', 'Becker', 'staff'
+FROM public.clubhouses
+LIMIT 1;
+```
+
+Look up a `member_id` and a `staff_id` to use against the endpoints below:
 
 ```sql
 SELECT member_id FROM public.members;
+SELECT staff_id FROM public.staff;
 ```
 
 Look up the valid `topic_code` values for phone calls:
@@ -138,7 +154,7 @@ Local URLs:
 | ------ | -------------------- | --------------------------------------------------------- |
 | POST   | `/api/v1/phone-calls` | Log a phone call for a member or a staff person            |
 | GET    | `/api/v1/phone-calls` | List phone calls, filterable by person and date range       |
-| POST   | `/api/v1/attendance`  | Log a member's attendance (time in, optional time out)      |
+| POST   | `/api/v1/attendance`  | Log a member's attendance (time in, optional time out and note) |
 | GET    | `/api/v1/attendance`  | List attendance entries, filterable by member and date range |
 | GET    | `/api/v1/attendance/summary` | Attendance counters for one member (`visits`, `days_attended`, `total_minutes`, `open_entries`) for a month or date range |
 | POST   | `/api/v1/members`     | Create a member, optionally with one emergency contact |
@@ -156,7 +172,9 @@ Local URLs:
 
 The `code` values returned by `GET /api/v1/lookups` are the values the create endpoints expect: `salutation`, `gender`, `country` and the emergency contact `relationship` for `POST /api/v1/members`, and `person_type` and `topic_code` (an integer) for `POST /api/v1/phone-calls`. The code/label lists are ordered by `sort_order`. The `sectors` list has a different shape (`postal_code`, `sector`, `city`, `country`) and is ordered by `postal_code`; its `postal_code` values are the ones `POST /api/v1/members` accepts. `GET /api/v1/staff` never includes email or other contact details and omits anonymized people; `staff_status` is matched exactly.
 
-`POST /api/v1/members` takes `first_name`, `last_name`, `date_of_birth` and `join_date` (required) and the optional `salutation`, `gender`, `phone`, `email`, `street_address`, `postal_code`, `city`, `country` and `clubhouse_id`. An optional `emergency_contact` object (`name`, `phone`, optional `relationship`) is stored in the same transaction, so a failure rolls back the member too. `salutation`, `gender`, `country` and `relationship` are lookup codes that the database validates. `postal_code` must be one of the Munich postal codes in the `sectors` list (for example `80333`), or empty or omitted; any other value is rejected with `422` "Unknown postal_code". If `clubhouse_id` is omitted, the only existing clubhouse is used (`409` if none exists, `422` if there are several). Unknown fields are rejected with `422`. The response is `201` with the member as in the list below, including the generated `member_code`; `member_code`, `is_member` and `is_active` are set by the database and cannot be sent.
+`POST /api/v1/attendance` takes `member_id`, `attendance_date` and `time_in` (required) and the optional `time_out` and `note`. The `note` is trimmed, a blank note is saved as `null`, and it may be at most 500 characters; this is a backend limit, the database itself has none. A note for an anonymized member is rejected with `422`. Unknown fields are rejected with `422`. The response and `GET /api/v1/attendance` include the `note`.
+
+`POST /api/v1/members` takes `first_name`, `last_name`, `date_of_birth` and `join_date` (required) and the optional `salutation`, `gender`, `phone`, `landline_phone`, `ori_interviewer_id`, `email`, `street_address`, `postal_code`, `city`, `country` and `clubhouse_id`. `phone` is the mobile number and `landline_phone` the landline number; both are trimmed, a blank value is saved as `null`, and each may be at most 50 characters, a backend limit (the database has none). `ori_interviewer_id` is the `staff_id` of the staff person who conducted the ORI closing interview, taken from `GET /api/v1/staff`; an id that doesn't exist is rejected with `422` "Unknown ori_interviewer_id", and a value that is not a UUID with `422`. An optional `emergency_contact` object (`name`, `phone`, optional `relationship`) is stored in the same transaction, so a failure rolls back the member too. `salutation`, `gender`, `country` and `relationship` are lookup codes that the database validates. `postal_code` must be one of the Munich postal codes in the `sectors` list (for example `80333`), or empty or omitted; any other value is rejected with `422` "Unknown postal_code". If `clubhouse_id` is omitted, the only existing clubhouse is used (`409` if none exists, `422` if there are several). Unknown fields are rejected with `422`. The response is `201` with the member as in the list below, including the generated `member_code`; `member_code`, `is_member` and `is_active` are set by the database and cannot be sent. The phone numbers and `ori_interviewer_id` are stored but not returned in the member response or list.
 
 `GET /api/v1/members` reads the `members_current` view. `search` (up to 100 characters) matches every word, case-insensitively, against first name, last name or member code; by default only current members are returned (`include_left=true` also includes members who have left, never anonymized ones), and `is_active` (`true` or `false`) filters by activity.
 
@@ -187,7 +205,8 @@ Open the Swagger UI, expand `POST /api/v1/phone-calls` or `POST /api/v1/attendan
   "member_id": "<member_id>",
   "attendance_date": "2026-01-15",
   "time_in": "09:00:00",
-  "time_out": "14:00:00"
+  "time_out": "14:00:00",
+  "note": "Helped in the kitchen"
 }
 ```
 
