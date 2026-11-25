@@ -31,8 +31,8 @@ function formatIsoToGerman(isoDate) {
 }
 
 /**
- * Reusable Calendar Modal/Popover matching Sahu's Figma Hi-Fi Calendar component.
- * Renders inside a centered viewport overlay so it is never clipped by card boundaries.
+ * Reusable Calendar Overlay matching Sahu's Figma Hi-Fi Calendar component.
+ * Positioned relative to the nearest positioned card container (.app-card).
  *
  * @param {Object} props
  * @param {string} props.value - Currently selected ISO date (YYYY-MM-DD)
@@ -87,7 +87,7 @@ export function CalendarPopover({ value, onApply, onCancel }) {
 
   return (
     <div
-      className="fixed inset-0 bg-black/30 backdrop-blur-2xs flex items-center justify-center p-4 z-50"
+      className="absolute inset-0 bg-black/25 rounded-xl flex items-start justify-start pt-[12.5%] pl-[5%] z-50"
       onClick={onCancel}
     >
       <div
@@ -199,7 +199,8 @@ export function CalendarPopover({ value, onApply, onCancel }) {
 
 /**
  * BirthDatePicker Component
- * Text input formatted as TT.MM.JJJJ with an interactive calendar modal trigger.
+ * Text input formatted as TT.MM.JJJJ with an interactive calendar overlay trigger.
+ * Accepts only digits and auto-formats DD.MM.YYYY during manual typing.
  *
  * @param {Object} props
  * @param {string} props.label - Visible German field label
@@ -221,27 +222,39 @@ export default function BirthDatePicker({
     draftText !== null ? draftText : formatIsoToGerman(value);
 
   /**
-   * Parses manual TT.MM.JJJJ input and propagates valid ISO dates to parent state.
+   * Strips all non-digit characters, auto-formats as TT.MM.JJJJ,
+   * and propagates complete valid ISO dates to parent state.
    *
    * @param {React.ChangeEvent<HTMLInputElement>} e - Input change event
    */
   function handleManualTyping(e) {
-    const raw = e.target.value;
-    setDraftText(raw);
+    // Keep only digits (0-9) and limit to 8 digits (DDMMYYYY)
+    const digits = e.target.value.replace(/\D/g, "").slice(0, 8);
 
-    const match = raw.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
-    if (match) {
-      const [, dd, mm, yyyy] = match;
+    // Auto-insert dots: 15052002 -> 15.05.2002
+    let formatted = digits;
+    if (digits.length > 4) {
+      formatted = `${digits.slice(0, 2)}.${digits.slice(2, 4)}.${digits.slice(4)}`;
+    } else if (digits.length > 2) {
+      formatted = `${digits.slice(0, 2)}.${digits.slice(2)}`;
+    }
+
+    setDraftText(formatted);
+
+    if (digits.length === 8) {
+      const dd = digits.slice(0, 2);
+      const mm = digits.slice(2, 4);
+      const yyyy = digits.slice(4, 8);
       onChange?.(`${yyyy}-${mm}-${dd}`);
       setDraftText(null);
-    } else if (raw === "") {
+    } else if (digits.length === 0) {
       onChange?.("");
       setDraftText(null);
     }
   }
 
   return (
-    <div className="relative flex flex-col gap-1.5 w-full">
+    <div className="flex flex-col gap-1.5 w-full">
       <label className="text-sm font-medium text-black">
         {label}
         {required && (
@@ -254,6 +267,8 @@ export default function BirthDatePicker({
       <div className="relative">
         <input
           type="text"
+          inputMode="numeric"
+          maxLength={10}
           value={displayedText}
           onChange={handleManualTyping}
           onBlur={() => setDraftText(null)}

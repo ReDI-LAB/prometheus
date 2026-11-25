@@ -222,3 +222,76 @@ export async function createMember(memberData) {
     );
   }
 }
+/**
+ * Fetches all lookup dictionaries (salutations, genders, countries,
+ * contact relationships, caller types, call topics, and Munich postal sectors).
+ *
+ * @returns {Promise<Object>} Object containing lookup arrays from GET /api/v1/lookups
+ */
+export async function fetchLookups() {
+  try {
+    const response = await fetch(`${API_BASE_URL}/lookups`);
+    return await handleResponse(response);
+  } catch (error) {
+    if (error instanceof ApiError) {
+      throw error;
+    }
+    throw new ApiError(
+      "Keine Verbindung zum Backend möglich. Bitte prüfen, ob FastAPI auf Port 8000 läuft.",
+      0,
+      error.message,
+    );
+  }
+}
+
+/**
+ * Fetches active staff members for dropdown selection (e.g. ORI interviewer).
+ *
+ * @returns {Promise<Array>} List of staff summary objects
+ */
+export async function fetchStaff() {
+  try {
+    const response = await fetch(`${API_BASE_URL}/staff?staff_status=active`);
+    const data = await handleResponse(response);
+    return Array.isArray(data) ? data : data.items || [];
+  } catch (error) {
+    if (error instanceof ApiError) {
+      throw error;
+    }
+    throw new ApiError(
+      "Keine Verbindung zum Backend möglich. Bitte prüfen, ob FastAPI auf Port 8000 läuft.",
+      0,
+      error.message,
+    );
+  }
+}
+
+/**
+ * Fetches monthly attendance counters (visits, days_attended, total_minutes)
+ * for a single member from GET /api/v1/attendance/summary.
+ *
+ * @param {string} memberId - UUID of the member
+ * @param {string} [month] - Optional YYYY-MM filter (defaults to current month on server)
+ * @returns {Promise<Object>} Attendance summary object
+ */
+export async function fetchAttendanceSummary(memberId, month = null) {
+  try {
+    const params = new URLSearchParams({ member_id: memberId });
+    if (month) {
+      params.set("month", month);
+    }
+    const response = await fetch(
+      `${API_BASE_URL}/attendance/summary?${params.toString()}`,
+    );
+    return await handleResponse(response);
+  } catch (error) {
+    if (error instanceof ApiError) {
+      throw error;
+    }
+    throw new ApiError(
+      "Keine Verbindung zum Backend möglich. Bitte prüfen, ob FastAPI auf Port 8000 läuft.",
+      0,
+      error.message,
+    );
+  }
+}

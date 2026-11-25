@@ -1,10 +1,10 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useEffect } from "react";
 import InputField from "../components/InputField";
 import MemberSearchSelect from "../components/MemberSearchSelect";
 import FormButton from "../components/FormButton";
 import ConfirmationCard from "../components/ConfirmationCard";
 import { CalendarPopover } from "../components/DatePicker";
-import { createAttendance } from "../services/api";
+import { createAttendance, fetchAttendanceSummary } from "../services/api";
 import { useMembers } from "../context/useMembers";
 
 /**
@@ -26,11 +26,6 @@ function getPreviousBusinessDay() {
 
 /**
  * Calculates human-readable duration in hours and minutes.
- * Examples:
- *   "09:00" -> "14:30" => "5 Std. 30 Min."
- *   "09:00" -> "14:00" => "5 Std."
- *   "09:00" -> "09:45" => "45 Min."
- *   Invalid / equal   => "0 Std. 0 Min."
  *
  * @param {string} arrival - Arrival time formatted as "HH:MM"
  * @param {string} departure - Departure time formatted as "HH:MM"
@@ -59,13 +54,12 @@ function calculateDuration(arrival, departure) {
 
 /**
  * BabPage Component
- * Form for daily attendance logging (BAB), connected to central MemberContext.
+ * Form for daily attendance logging (BAB), connected to MemberContext and attendance summary API.
  *
  * @param {Object} props
  * @param {Function} props.onBackToHome - Navigation callback returning to the dashboard
  */
 export default function BabPage({ onBackToHome }) {
-  // Consume cached active members and loading state from central context
   const { members, isLoading: isLoadingMembers } = useMembers();
 
   // --- Form Input States ---
@@ -75,6 +69,7 @@ export default function BabPage({ onBackToHome }) {
   const [departure, setDeparture] = useState("14:00");
   const [note, setNote] = useState("");
   const [selectedMember, setSelectedMember] = useState(null);
+  const [monthlyVisits, setMonthlyVisits] = useState(null);
 
   // --- UI Feedback & Submission States ---
   const [showConfirmation, setShowConfirmation] = useState(false);
@@ -82,31 +77,49 @@ export default function BabPage({ onBackToHome }) {
   const [errorMessage, setErrorMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const datePopoverRef = useRef(null);
-
-  // Close calendar popover when clicking outside the date section
+  // Fetch real monthly visit counter whenever a member or month changes
   useEffect(() => {
-    function handleOutside(e) {
-      if (
-        datePopoverRef.current &&
-        !datePopoverRef.current.contains(e.target)
-      ) {
-        setIsEditingDate(false);
-      }
-    }
-    document.addEventListener("mousedown", handleOutside);
-    return () => document.removeEventListener("mousedown", handleOutside);
-  }, []);
+    const memberId = selectedMember?.member_id || selectedMember?.mitglied_id;
+    if (!memberId) return;
 
-  // Derived calculations: live duration, membership status, and monthly attendance count
+    let isMounted = true;
+    const monthParam = date ? date.slice(0, 7) : null;
+
+    fetchAttendanceSummary(memberId, monthParam)
+      .then((summary) => {
+        if (isMounted && typeof summary?.visits === "number") {
+          setMonthlyVisits(summary.visits);
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setMonthlyVisits(null);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [selectedMember, date]);
+
+  // Derived calculations: live duration, membership status (M vs. MO), and monthly counter
   const totalHours = calculateDuration(arrival, departure);
+
   const statusBadge =
-    selectedMember?.membership_status || selectedMember?.mitgliedsstatus
-      ? (
-          selectedMember.membership_status || selectedMember.mitgliedsstatus
-        ).toUpperCase()
-      : "MO";
-  const attendanceMonthly = selectedMember ? "9 / Monat" : "0 / Monat";
+    typeof selectedMember?.is_member === "boolean"
+      ? selectedMember.is_member
+        ? "M"
+        : "MO"
+      : selectedMember?.membership_status || selectedMember?.mitgliedsstatus
+        ? (
+            selectedMember.membership_status || selectedMember.mitgliedsstatus
+          ).toUpperCase()
+        : "MO";
+
+  const attendanceMonthly =
+    selectedMember && monthlyVisits !== null
+      ? `${monthlyVisits} / Monat`
+      : "0 / Monat";
 
   /**
    * Formats ISO date string into German localized date (e.g. "Montag, 07.09.2026").
@@ -138,7 +151,6 @@ export default function BabPage({ onBackToHome }) {
       return;
     }
 
-    // Departure time must strictly follow arrival time
     if (arrival && departure && departure <= arrival) {
       setErrorMessage("Die Abgangszeit muss nach der Ankunftszeit liegen.");
       return;
@@ -158,7 +170,6 @@ export default function BabPage({ onBackToHome }) {
     setIsSubmitting(true);
 
     try {
-      // Resolve both backend UUID schema (member_id) and legacy mock schema (mitglied_id)
       const memberId = selectedMember.member_id || selectedMember.mitglied_id;
 
       await createAttendance({
@@ -170,6 +181,7 @@ export default function BabPage({ onBackToHome }) {
 
       setSaveSuccess(true);
       setSelectedMember(null);
+      setMonthlyVisits(null);
       setNote("");
 
       setTimeout(() => {
@@ -182,12 +194,10 @@ export default function BabPage({ onBackToHome }) {
     }
   }
 
-  // Resolve member display name across snake_case and legacy attributes
   const memberDisplayName = selectedMember
     ? `${selectedMember.first_name || selectedMember.vorname || ""} ${selectedMember.last_name || selectedMember.nachname || ""}`.trim()
     : "Kein Mitglied ausgewählt";
 
-  // Key-value summary rows displayed inside ConfirmationCard
   const confirmationItems = [
     { label: "Datum", value: formatDisplayDate(date) },
     { label: "Mitglied", value: memberDisplayName },
@@ -205,7 +215,6 @@ export default function BabPage({ onBackToHome }) {
       </header>
 
       <div className="p-6 sm:p-8">
-        {/* Success notification banner */}
         {saveSuccess && (
           <aside
             role="status"
@@ -216,7 +225,6 @@ export default function BabPage({ onBackToHome }) {
           </aside>
         )}
 
-        {/* Error notification banner */}
         {errorMessage && (
           <aside
             role="alert"
@@ -237,12 +245,8 @@ export default function BabPage({ onBackToHome }) {
 
         {/* Inner bordered form container */}
         <div className="app-form-box">
-          {/* Date header section with interactive calendar popover */}
-          <section
-            ref={datePopoverRef}
-            aria-label="Datumsangabe"
-            className="relative mb-5"
-          >
+          {/* Date header section with calendar overlay trigger */}
+          <section aria-label="Datumsangabe" className="mb-5">
             <div className="flex items-center gap-2">
               <span className="text-base font-medium text-black">
                 {formatDisplayDate(date)}
@@ -273,28 +277,27 @@ export default function BabPage({ onBackToHome }) {
             </p>
 
             {isEditingDate && (
-              <div className="absolute left-0 top-full mt-2 z-40">
-                <CalendarPopover
-                  value={date}
-                  onCancel={() => setIsEditingDate(false)}
-                  onApply={(newIso) => {
-                    setDate(newIso);
-                    setIsEditingDate(false);
-                  }}
-                />
-              </div>
+              <CalendarPopover
+                value={date}
+                onCancel={() => setIsEditingDate(false)}
+                onApply={(newIso) => {
+                  setDate(newIso);
+                  setIsEditingDate(false);
+                }}
+              />
             )}
           </section>
 
-          {/* Semantic attendance entry form */}
           <form onSubmit={handleFormSubmit} className="space-y-5">
-            {/* Row 1: Searchable member combobox */}
             <MemberSearchSelect
               id="member-search"
               label="Mitglied"
               members={members}
               selectedMember={selectedMember}
-              onSelect={(member) => setSelectedMember(member)}
+              onSelect={(member) => {
+                setSelectedMember(member);
+                if (!member) setMonthlyVisits(null);
+              }}
               placeholder={
                 isLoadingMembers
                   ? "Lade Mitglieder..."
@@ -303,7 +306,6 @@ export default function BabPage({ onBackToHome }) {
               required
             />
 
-            {/* Row 2: Arrival and Departure grouped in a semantic fieldset */}
             <fieldset className="grid grid-cols-1 sm:grid-cols-2 gap-4 border-0 p-0 m-0">
               <legend className="sr-only">Anwesenheitszeiten</legend>
 
@@ -341,7 +343,6 @@ export default function BabPage({ onBackToHome }) {
               </p>
             )}
 
-            {/* Row 3: Live calculated hours, membership status, and monthly counter */}
             <dl className="space-y-2.5 pt-1 text-sm" aria-live="polite">
               <div className="flex items-baseline gap-1.5 text-[#5E5E5F]">
                 <dt>Gesamtdauer:</dt>
@@ -357,19 +358,6 @@ export default function BabPage({ onBackToHome }) {
                     {statusBadge.charAt(0).toUpperCase() +
                       statusBadge.slice(1).toLowerCase()}
                   </span>
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    className="w-3.5 h-3.5 text-[#0B84CF]"
-                    aria-hidden="true"
-                  >
-                    <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
-                  </svg>
                 </dd>
               </div>
 
@@ -381,7 +369,6 @@ export default function BabPage({ onBackToHome }) {
               </div>
             </dl>
 
-            {/* Row 4: Optional notes textarea */}
             <div className="flex flex-col gap-1.5 w-full">
               <label
                 htmlFor="bab-note"
@@ -401,7 +388,6 @@ export default function BabPage({ onBackToHome }) {
               />
             </div>
 
-            {/* Row 5: Primary and secondary action buttons */}
             <div className="grid grid-cols-2 gap-4 pt-3">
               <FormButton
                 type="button"
@@ -424,7 +410,6 @@ export default function BabPage({ onBackToHome }) {
         </div>
       </div>
 
-      {/* Verification modal dialog before final API persistence */}
       <ConfirmationCard
         isOpen={showConfirmation}
         title="Daten überprüfen"

@@ -1,13 +1,12 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import InputField from "../components/InputField";
 import BirthDatePicker from "../components/DatePicker";
-import RadioGroup from "../components/RadioGroup";
 import Accordion from "../components/Accordion";
 import StepProgress from "../components/StepProgress";
 import FormButton from "../components/FormButton";
 import ConfirmationCard from "../components/ConfirmationCard";
 import SelectDropdown from "../components/SelectDropdown";
-import { createMember } from "../services/api";
+import { createMember, fetchLookups, fetchStaff } from "../services/api";
 import { useMembers } from "../context/useMembers";
 
 // Step definitions for the multi-step registration wizard
@@ -17,22 +16,23 @@ const STEPS = [
   { id: 3, label: "ClubHaus" },
 ];
 
-// Salutation options mapped to V2 database lookup codes
+// Salutation options strictly aligned with database lookup codes (public.salutations)
 const SALUTATION_OPTIONS = [
   { value: "ms", label: "Frau" },
   { value: "mr", label: "Herr" },
   { value: "unspecified", label: "Keine Angabe" },
 ];
 
-// Gender options mapped to V2 database lookup codes
+// Gender options strictly aligned with database lookup codes (public.genders)
 const GENDER_OPTIONS = [
-  { value: "male", label: "Männlich" },
   { value: "female", label: "Weiblich" },
+  { value: "male", label: "Männlich" },
   { value: "diverse", label: "Divers" },
+  { value: "unspecified", label: "Keine Angabe" },
 ];
 
-// Country ISO codes accepted by public.countries foreign key
-const COUNTRY_OPTIONS = [
+// Fallback country ISO codes accepted by public.countries foreign key
+const FALLBACK_COUNTRY_OPTIONS = [
   { value: "DE", label: "Deutschland" },
   { value: "AT", label: "Österreich" },
   { value: "CH", label: "Schweiz" },
@@ -45,8 +45,8 @@ const COUNTRY_OPTIONS = [
   { value: "GI", label: "Gibraltar" },
 ];
 
-// Relationship codes accepted by public.contact_relationships foreign key
-const RELATIONSHIP_OPTIONS = [
+// Fallback relationship codes accepted by public.contact_relationships foreign key
+const FALLBACK_RELATIONSHIP_OPTIONS = [
   { value: "mother", label: "Mutter" },
   { value: "father", label: "Vater" },
   { value: "wife", label: "Ehefrau" },
@@ -58,13 +58,13 @@ const RELATIONSHIP_OPTIONS = [
   { value: "other", label: "Sonstige" },
 ];
 
-// Predefined staff list for the orientation interview dropdown
-const STAFF_OPTIONS = [
-  { value: "Emma Weber", label: "Emma Weber" },
-  { value: "Hannah Müller", label: "Hannah Müller" },
-  { value: "Merle Schneider", label: "Merle Schneider" },
-  { value: "Mia Weber", label: "Mia Weber" },
-];
+// German display labels for database sector codes (North, South, East, West)
+const SECTOR_LABELS_DE = {
+  North: "Nord",
+  South: "Süd",
+  East: "Ost",
+  West: "West",
+};
 
 // Initial blank form state matching database column requirements
 const INITIAL_FORM_DATA = {
@@ -78,7 +78,7 @@ const INITIAL_FORM_DATA = {
   // Step 2: Contact Details
   strasse_hausnummer: "",
   postleitzahl: "",
-  ort: "",
+  ort: "München",
   land: "DE",
   sektor: "",
   mobile: "",
@@ -98,25 +98,43 @@ const INITIAL_FORM_DATA = {
 };
 
 /**
- * Maps a 5-digit Munich postal code to its administrative sector.
+ * Resolves a 5-digit postal code against the Munich pilot sectors lookup list.
  *
  * @param {string} plz - 5-digit German postal code
- * @returns {string} Determined sector name in German
+ * @param {Array<{postal_code: string, sector: string}>} sectorRows - Rows from GET /api/v1/lookups
+ * @returns {{ isValid: boolean, sectorLabel: string }} Lookup match status and German sector label
  */
-function getSectorFromPlz(plz) {
-  if (!plz || plz.length < 5) return "";
-
-  if (!plz.startsWith("80") && !plz.startsWith("81")) {
-    return "Außerhalb";
+function resolveMunichSector(plz, sectorRows) {
+  if (!plz || plz.length < 5) {
+    return { isValid: true, sectorLabel: "" };
   }
 
-  const prefix = plz.substring(0, 3);
-  if (["803", "807", "808", "809"].includes(prefix)) return "Nord";
-  if (["813", "814", "815"].includes(prefix)) return "Süd";
-  if (["816", "817", "818", "819"].includes(prefix)) return "Ost";
-  if (["806", "812"].includes(prefix)) return "West";
+  // If lookup data has not loaded yet, fall back to Munich prefix heuristic
+  if (!Array.isArray(sectorRows) || sectorRows.length === 0) {
+    if (!plz.startsWith("80") && !plz.startsWith("81")) {
+      return { isValid: false, sectorLabel: "" };
+    }
+    const prefix = plz.substring(0, 3);
+    if (["803", "807", "808", "809"].includes(prefix))
+      return { isValid: true, sectorLabel: "Nord" };
+    if (["813", "814", "815"].includes(prefix))
+      return { isValid: true, sectorLabel: "Ost" };
+    if (["816", "817", "818", "819"].includes(prefix))
+      return { isValid: true, sectorLabel: "Ost" };
+    if (["806", "812"].includes(prefix))
+      return { isValid: true, sectorLabel: "West" };
+    return { isValid: true, sectorLabel: "Süd" };
+  }
 
-  return "München (Unbekannt)";
+  const match = sectorRows.find((row) => row.postal_code === plz);
+  if (!match) {
+    return { isValid: false, sectorLabel: "" };
+  }
+
+  return {
+    isValid: true,
+    sectorLabel: SECTOR_LABELS_DE[match.sector] || match.sector,
+  };
 }
 
 /**
@@ -139,6 +157,17 @@ export default function NewMemberForm() {
 
   const [currentStep, setCurrentStep] = useState(1);
   const [formData, setFormData] = useState(INITIAL_FORM_DATA);
+  const [plzWarning, setPlzWarning] = useState("");
+
+  // Dynamic lookup & staff states loaded from backend
+  const [sectorList, setSectorList] = useState([]);
+  const [staffOptions, setStaffOptions] = useState([]);
+  const [countryOptions, setCountryOptions] = useState(
+    FALLBACK_COUNTRY_OPTIONS,
+  );
+  const [relationshipOptions, setRelationshipOptions] = useState(
+    FALLBACK_RELATIONSHIP_OPTIONS,
+  );
 
   // UI feedback states
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -146,20 +175,102 @@ export default function NewMemberForm() {
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
+  // Load lookup dictionaries (including 74 Munich postal codes) and active staff on mount
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadReferenceData() {
+      try {
+        const [lookups, staffList] = await Promise.all([
+          fetchLookups(),
+          fetchStaff(),
+        ]);
+
+        if (!isMounted) return;
+
+        if (Array.isArray(lookups?.sectors)) {
+          setSectorList(lookups.sectors);
+        }
+
+        if (Array.isArray(lookups?.countries) && lookups.countries.length > 0) {
+          setCountryOptions(
+            lookups.countries.map((item) => ({
+              value: item.code,
+              label:
+                FALLBACK_COUNTRY_OPTIONS.find((f) => f.value === item.code)
+                  ?.label || item.label,
+            })),
+          );
+        }
+
+        if (
+          Array.isArray(lookups?.contact_relationships) &&
+          lookups.contact_relationships.length > 0
+        ) {
+          setRelationshipOptions(
+            lookups.contact_relationships.map((item) => ({
+              value: item.code,
+              label:
+                FALLBACK_RELATIONSHIP_OPTIONS.find((f) => f.value === item.code)
+                  ?.label || item.label,
+            })),
+          );
+        }
+
+        if (Array.isArray(staffList)) {
+          setStaffOptions(
+            staffList.map((person) => ({
+              value: person.staff_id,
+              label:
+                `${person.first_name || ""} ${person.last_name || ""}`.trim(),
+            })),
+          );
+        }
+      } catch {
+        // Keep fallback options silently if backend is unreachable during UI-only work
+      }
+    }
+
+    loadReferenceData();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   /**
-   * Updates form field state and triggers sector recalculation when postal code has 5 digits.
+   * Updates form field state and resolves Munich postal code sector when 5 digits are entered.
    *
    * @param {string} field - Field property key
    * @param {string} value - New field value
    */
   function handleChange(field, value) {
-    setFormData((prev) => {
-      const updated = { ...prev, [field]: value };
-      if (field === "postleitzahl" && value.length === 5) {
-        updated.sektor = getSectorFromPlz(value);
+    if (field === "postleitzahl") {
+      setPlzWarning("");
+      if (value.length === 5) {
+        const { isValid, sectorLabel } = resolveMunichSector(value, sectorList);
+        if (!isValid) {
+          setPlzWarning(
+            "Hinweis: Diese PLZ gehört nicht zu den 74 Münchner Pilot-Postleitzahlen und wird nicht gespeichert.",
+          );
+        }
+        setFormData((prev) => ({
+          ...prev,
+          postleitzahl: value,
+          sektor: isValid ? sectorLabel : "",
+        }));
+        return;
       }
-      return updated;
-    });
+
+      setFormData((prev) => ({
+        ...prev,
+        postleitzahl: value,
+        sektor: "",
+      }));
+      return;
+    }
+
+    setFormData((prev) => ({ ...prev, [field]: value }));
   }
 
   /**
@@ -190,6 +301,12 @@ export default function NewMemberForm() {
         );
         return;
       }
+      if (formData.postleitzahl && formData.postleitzahl.length !== 5) {
+        setErrorMessage(
+          "Bitte geben Sie eine 5-stellige Münchner Postleitzahl ein oder lassen Sie das Feld leer.",
+        );
+        return;
+      }
       setCurrentStep(3);
     } else if (currentStep === 3) {
       if (!formData.eintrittsdatum) {
@@ -210,7 +327,8 @@ export default function NewMemberForm() {
 
   /**
    * Maps German frontend form state to the backend's MemberCreate Pydantic schema.
-   * Strictly excludes unknown fields so backend extra="forbid" validation passes.
+   * Sends null for postal_code if omitted or outside the 74 Munich pilot postal codes
+   * to satisfy the foreign key constraint on public.sectors.
    *
    * @param {Object} data - Current form state
    * @returns {Object} Clean JSON payload for POST /api/v1/members
@@ -219,6 +337,10 @@ export default function NewMemberForm() {
     const fullPhone = data.mobile?.trim()
       ? `+49${data.mobile.trim().replace(/^0+/, "")}`
       : data.telefon?.trim() || null;
+
+    const rawPlz = data.postleitzahl?.trim() || "";
+    const isSupportedMunichPlz =
+      rawPlz.length === 5 && resolveMunichSector(rawPlz, sectorList).isValid;
 
     const payload = {
       first_name: data.vorname.trim(),
@@ -230,7 +352,7 @@ export default function NewMemberForm() {
       phone: fullPhone,
       email: data.email?.trim() || null,
       street_address: data.strasse_hausnummer?.trim() || null,
-      postal_code: data.postleitzahl?.trim() || null,
+      postal_code: isSupportedMunichPlz ? rawPlz : null,
       city: data.ort?.trim() || null,
       country: data.land || "DE",
     };
@@ -257,7 +379,6 @@ export default function NewMemberForm() {
       const payload = buildMemberPayload(formData);
       const createdMember = await createMember(payload);
 
-      // Update global member cache immediately so BAB & Phone Log show the new member
       if (addMember) {
         addMember(createdMember);
       }
@@ -265,6 +386,7 @@ export default function NewMemberForm() {
       setShowConfirmation(false);
       setSaveSuccess(true);
       setCurrentStep(1);
+      setPlzWarning("");
       setFormData(INITIAL_FORM_DATA);
 
       setTimeout(() => {
@@ -278,13 +400,20 @@ export default function NewMemberForm() {
     }
   }
 
-  // Resolve human-readable German label for salutation in the confirmation summary
   const salutationLabel =
     formData.anrede && formData.anrede !== "unspecified"
       ? SALUTATION_OPTIONS.find((opt) => opt.value === formData.anrede)?.label
       : "";
 
-  // Key-value summary rows displayed inside ConfirmationCard
+  const genderLabel =
+    GENDER_OPTIONS.find((opt) => opt.value === formData.geschlecht)?.label ||
+    "-";
+
+  const staffDisplayName =
+    staffOptions.find((s) => s.value === formData.ori_mitarbeiter)?.label ||
+    formData.ori_mitarbeiter ||
+    "-";
+
   const confirmationItems = [
     {
       label: "Name",
@@ -292,15 +421,17 @@ export default function NewMemberForm() {
         `${salutationLabel ? salutationLabel + " " : ""}${formData.vorname} ${formData.nachname}`.trim(),
     },
     { label: "Geburtsdatum", value: formData.geburtsdatum || "-" },
+    { label: "Geschlecht", value: genderLabel },
     { label: "Straße & Hausnummer", value: formData.strasse_hausnummer || "-" },
     { label: "Postleitzahl (PLZ)", value: formData.postleitzahl || "-" },
+    { label: "Sektor", value: formData.sektor || "-" },
     { label: "Stadt", value: formData.ort || "-" },
     { label: "Mobil", value: formData.mobile ? `+49 ${formData.mobile}` : "-" },
     { label: "E-Mail", value: formData.email || "-" },
     { label: "Eintrittsdatum", value: formData.eintrittsdatum || "-" },
     {
       label: "Orientierungsgespräch geführt von",
-      value: formData.ori_mitarbeiter || "-",
+      value: staffDisplayName,
     },
   ];
 
@@ -350,6 +481,7 @@ export default function NewMemberForm() {
                     value={formData.anrede}
                     onChange={(e) => handleChange("anrede", e.target.value)}
                     options={SALUTATION_OPTIONS}
+                    placeholder="Bitte wählen"
                   />
 
                   <InputField
@@ -380,13 +512,13 @@ export default function NewMemberForm() {
                   required
                 />
 
-                <RadioGroup
+                <SelectDropdown
+                  id="gender"
                   label="Geschlecht"
-                  hideLabel
-                  name="gender"
                   value={formData.geschlecht}
                   onChange={(e) => handleChange("geschlecht", e.target.value)}
                   options={GENDER_OPTIONS}
+                  placeholder="Geschlecht auswählen"
                 />
               </fieldset>
             )}
@@ -403,23 +535,28 @@ export default function NewMemberForm() {
                   onChange={(e) =>
                     handleChange("strasse_hausnummer", e.target.value)
                   }
-                  placeholder="z. B Musterstraße 123"
-                  required
+                  placeholder="z. B. Musterstraße 123"
                 />
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <InputField
-                    id="plz"
-                    label="Postleitzahl (PLZ)"
-                    value={formData.postleitzahl}
-                    onChange={(e) =>
-                      handleChange("postleitzahl", e.target.value)
-                    }
-                    placeholder="12345"
-                    maxLength={5}
-                    onlyNumbers
-                    required
-                  />
+                  <div>
+                    <InputField
+                      id="plz"
+                      label="Postleitzahl (PLZ)"
+                      value={formData.postleitzahl}
+                      onChange={(e) =>
+                        handleChange("postleitzahl", e.target.value)
+                      }
+                      placeholder="z. B. 81539"
+                      maxLength={5}
+                      onlyNumbers
+                    />
+                    {plzWarning && (
+                      <p className="text-xs text-amber-700 mt-1" role="status">
+                        {plzWarning}
+                      </p>
+                    )}
+                  </div>
                   <InputField
                     id="city"
                     label="Stadt"
@@ -427,7 +564,6 @@ export default function NewMemberForm() {
                     onChange={(e) => handleChange("ort", e.target.value)}
                     placeholder="z. B. München"
                     onlyLetters
-                    required
                   />
                 </div>
 
@@ -437,7 +573,7 @@ export default function NewMemberForm() {
                     label="Land"
                     value={formData.land}
                     onChange={(e) => handleChange("land", e.target.value)}
-                    options={COUNTRY_OPTIONS}
+                    options={countryOptions}
                   />
 
                   <InputField
@@ -445,13 +581,12 @@ export default function NewMemberForm() {
                     label="Sektor"
                     value={formData.sektor}
                     onChange={(e) => handleChange("sektor", e.target.value)}
-                    placeholder="Süd"
+                    placeholder="Automatisch aus PLZ"
                     readOnly
                   />
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {/* Mobile phone input with German country prefix */}
                   <div className="flex flex-col gap-1.5">
                     <label
                       htmlFor="mobile"
@@ -500,7 +635,7 @@ export default function NewMemberForm() {
                     const noSpaces = e.target.value.replace(/\s/g, "");
                     handleChange("email", noSpaces);
                   }}
-                  placeholder="z. B. beispiel@domain.de"
+                  placeholder="z. B. name@domain.de"
                   autoComplete="email"
                   autoCapitalize="none"
                   spellCheck={false}
@@ -510,13 +645,14 @@ export default function NewMemberForm() {
                 <Accordion title="Notfallkontakt">
                   <div className="space-y-4">
                     <InputField
-                      id="emergency-street"
-                      label="Straße & Hausnummer"
+                      id="emergency-name"
+                      label="Name der Kontaktperson"
                       value={formData.notfall_name}
                       onChange={(e) =>
                         handleChange("notfall_name", e.target.value)
                       }
-                      placeholder="z. B Musterstraße 123"
+                      placeholder="z. B. Maria Mustermann"
+                      onlyLetters
                     />
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <SelectDropdown
@@ -526,7 +662,7 @@ export default function NewMemberForm() {
                         onChange={(e) =>
                           handleChange("notfall_beziehung", e.target.value)
                         }
-                        options={RELATIONSHIP_OPTIONS}
+                        options={relationshipOptions}
                         placeholder="Bitte wählen"
                       />
 
@@ -581,8 +717,12 @@ export default function NewMemberForm() {
                   onChange={(e) =>
                     handleChange("ori_mitarbeiter", e.target.value)
                   }
-                  options={STAFF_OPTIONS}
-                  placeholder="Bitte wählen"
+                  options={staffOptions}
+                  placeholder={
+                    staffOptions.length > 0
+                      ? "Bitte wählen"
+                      : "Keine Mitarbeitenden hinterlegt"
+                  }
                 />
               </fieldset>
             )}
@@ -619,7 +759,7 @@ export default function NewMemberForm() {
         </div>
       </div>
 
-      {/* Figma Success Overlay Card ("Super! Daten erfolgreich gespeichert.") */}
+      {/* Figma Success Overlay Card */}
       {saveSuccess && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4 z-50">
           <div
