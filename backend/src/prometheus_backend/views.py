@@ -50,6 +50,7 @@ class MemberCurrent(ViewBase):
     is_member: Mapped[bool] = mapped_column(sa.Boolean)
     salutation: Mapped[str | None] = mapped_column(sa.Text)
     gender: Mapped[str | None] = mapped_column(sa.Text)
+    # Mobile number; see Member.phone.
     phone: Mapped[str | None] = mapped_column(sa.Text)
     email: Mapped[str | None] = mapped_column(sa.Text)
     street_address: Mapped[str | None] = mapped_column(sa.Text)
@@ -70,3 +71,7 @@ class MemberCurrent(ViewBase):
     # The clubhouse-local calendar date the above statuses were computed
     # for, i.e. (statement_timestamp() AT TIME ZONE clubhouse.timezone)::date.
     status_as_of: Mapped[date] = mapped_column(sa.Date)
+    # Appended at the end of the view in schema V4, after status_as_of.
+    landline_phone: Mapped[str | None] = mapped_column(sa.Text)
+    # Plain column here; the foreign key to staff lives on members.
+    ori_interviewer_id: Mapped[uuid.UUID | None] = mapped_column(sa.Uuid)

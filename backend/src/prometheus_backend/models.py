@@ -240,7 +240,23 @@ class Member(Base):
     gender: Mapped[str | None] = mapped_column(
         sa.ForeignKey("genders.code", ondelete="RESTRICT", onupdate="NO ACTION")
     )
+    # The member's mobile number. Values saved before schema V4 are kept as
+    # they were and are not reclassified as mobile or landline.
     phone: Mapped[str | None] = mapped_column(sa.Text)
+    # Optional landline number, stored separately from the mobile number.
+    landline_phone: Mapped[str | None] = mapped_column(sa.Text)
+    # Optional staff member who conducted the ORI closing interview. Deleting
+    # that staff row sets this back to NULL. No index=True: the schema
+    # installer creates ix_fk_members_ori_interviewer_id itself in its
+    # dynamic ix_fk_* maintenance pass, same as Staff.staff_status.
+    ori_interviewer_id: Mapped[uuid.UUID | None] = mapped_column(
+        sa.ForeignKey(
+            "staff.staff_id",
+            name="fk_members_ori_interviewer",
+            ondelete="SET NULL",
+            onupdate="NO ACTION",
+        )
+    )
     email: Mapped[str | None] = mapped_column(sa.Text)
     street_address: Mapped[str | None] = mapped_column(sa.Text)
     # NULL or one of sectors.postal_code; the database rejects anything else.
@@ -311,6 +327,9 @@ class Attendance(Base):
     created_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True), server_default=sa.func.now()
     )
+    # Optional free-text note for this visit. The database rejects a non-NULL
+    # note for an anonymized member (guard_redacted_content trigger).
+    note: Mapped[str | None] = mapped_column(sa.Text)
 
 
 class EmergencyContact(Base):
