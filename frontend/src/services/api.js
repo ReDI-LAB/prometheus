@@ -117,6 +117,7 @@ export async function createAttendance({
   attendance_date,
   time_in,
   time_out,
+  note,
 }) {
   try {
     const response = await fetch(`${API_BASE_URL}/attendance`, {
@@ -129,6 +130,7 @@ export async function createAttendance({
         attendance_date,
         time_in,
         time_out: time_out || null,
+        note: note ? note.trim() : null,
       }),
     });
 

@@ -228,6 +228,7 @@ export default function BabPage() {
         attendance_date: date,
         time_in: arrival,
         time_out: departure || null,
+        note,
       });
 
       setSaveSuccess(true);

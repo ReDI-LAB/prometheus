@@ -354,9 +354,11 @@ export default function NewMemberForm() {
    * @returns {Object} Clean JSON payload for POST /api/v1/members
    */
   function buildMemberPayload(data) {
-    const fullPhone = data.mobile?.trim()
+    const mobilePhone = data.mobile?.trim()
       ? `${data.mobile_vorwahl || "+49"}${data.mobile.trim().replace(/^0+/, "")}`
-      : data.telefon?.trim() || null;
+      : null;
+
+    const landlinePhone = data.telefon?.trim() || null;
 
     const rawPlz = data.postleitzahl?.trim() || "";
     const isSupportedMunichPlz =
@@ -369,7 +371,9 @@ export default function NewMemberForm() {
       join_date: data.eintrittsdatum,
       salutation: data.anrede || null,
       gender: data.geschlecht || null,
-      phone: fullPhone,
+      phone: mobilePhone,
+      landline_phone: landlinePhone,
+      ori_interviewer_id: data.ori_mitarbeiter || null,
       email: data.email?.trim() || null,
       street_address: data.strasse_hausnummer?.trim() || null,
       postal_code: isSupportedMunichPlz ? rawPlz : null,
